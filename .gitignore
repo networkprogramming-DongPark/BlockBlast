@@ -1,0 +1,14 @@
+out/
+*.class
+
+# IntelliJ: 프로젝트 구조 파일만 공유하고 개인 설정은 제외
+.idea/*
+!.idea/.gitignore
+!.idea/misc.xml
+!.idea/modules.xml
+!.idea/vcs.xml
+!.idea/networkprogramming-DongPark.iml
+
+# Eclipse
+.project
+.classpath
