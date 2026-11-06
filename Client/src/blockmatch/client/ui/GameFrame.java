@@ -25,6 +25,8 @@ public final class GameFrame extends JFrame {
     private static final int BOARD_ROW = 2;
     private static final int TRAY_ROW = 3;
 
+    private final ChatPanel chatPanel = new ChatPanel();
+
     public GameFrame() {
         super("블록 매치");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -44,11 +46,16 @@ public final class GameFrame extends JFrame {
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         root.add(playArea, BorderLayout.CENTER);
-        root.add(new ChatPanel(), BorderLayout.EAST);
+        root.add(chatPanel, BorderLayout.EAST);
 
         setContentPane(root);
         pack();
         setMinimumSize(getSize());
+    }
+
+    /** 서버 접속 상태 등을 채팅 영역에 표시한다. EDT에서 호출해야 한다. */
+    public void showMessage(String message) {
+        chatPanel.appendMessage(message);
     }
 
     private static void place(JPanel grid, Component component, int column, int row) {
