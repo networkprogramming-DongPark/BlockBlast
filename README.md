@@ -18,11 +18,30 @@ IntelliJ IDEA에서 `BlockBlast` 폴더를 열면 `Common`, `Client`, `Server` �
 
 ## 실행
 
-IntelliJ에서는 `blockmatch.client.ClientMain`을 실행합니다.
+IntelliJ에서는 `blockmatch.server.ServerMain`을 먼저 실행한 뒤 `blockmatch.client.ClientMain`을 두 번 실행합니다. 두 번째 실행을 위해 Run Configuration에서 Allow multiple instances를 켭니다.
 
 명령줄에서는 저장소 최상위 폴더에서 다음과 같이 실행합니다. (Git Bash 기준, JDK 17 이상)
 
 ```bash
 javac -encoding UTF-8 -d out $(find Common/src Client/src Server/src -name '*.java')
-java -cp out blockmatch.client.ClientMain
+java -cp out blockmatch.server.ServerMain
 ```
+
+터미널을 두 개 더 열어 클라이언트를 각각 실행합니다. 실행 인자는 `[닉네임] [서버 주소]`이고, 서버 주소를 생략하면 `localhost`에 접속합니다.
+
+```bash
+java -cp out blockmatch.client.ClientMain 동오
+```
+
+```bash
+java -cp out blockmatch.client.ClientMain 성훈
+```
+
+접속 상태는 게임 창의 채팅 영역에, 주고받은 메시지는 서버 콘솔에 표시됩니다. 지금은 입장과 게임 시작 메시지까지만 구현되어 있습니다.
+
+## Wireshark로 통신 확인
+
+1. Wireshark에서 `Adapter for loopback traffic capture`를 선택합니다. 서버와 클라이언트를 다른 PC에서 실행할 때는 실제 네트워크 어댑터를 선택합니다.
+2. 디스플레이 필터에 `tcp.port == 30000`을 입력합니다.
+3. 서버와 클라이언트 두 개를 실행합니다.
+4. 패킷을 우클릭해 Follow > TCP Stream을 선택하고, 인코딩을 UTF-8로 지정하면 메시지를 읽을 수 있습니다.

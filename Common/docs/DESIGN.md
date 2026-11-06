@@ -71,10 +71,19 @@
 | Client | `ui.PlayerInfoPanel` | 보드 위 플레이어 닉네임과 점수 자리 |
 | Client | `ui.BoardPanel` | 빈 8×8 격자 |
 | Client | `ui.BlockTrayPanel` | 블록 3개가 들어갈 빈 칸 |
-| Client | `ui.ChatPanel` | 채팅 영역 (전송 기능 없음) |
+| Client | `ui.ChatPanel` | 채팅 영역, 서버 접속 상태 표시 (전송 기능 없음) |
 | Server | `ServerMain` | 진입점 (12주차 구현 예정) |
 
 10주차 화면은 영역 배치만 잡은 틀이다. 공용 모델은 아직 화면과 연결하지 않았고, 예상 GUI의 스타일은 이후 UI 개선 단계에서 적용한다.
+
+Wireshark 과제를 위해 12주차 소켓 통신 중 접속 과정을 먼저 구현했다:
+
+| 모듈 | 클래스 | 역할 |
+| --- | --- | --- |
+| Common | `Protocol` | 메시지 형식, 변환 (`JOIN`, `WELCOME`, `START`만) |
+| Server | `GameServer` | 접속 수락, 두 명 입장 시 게임 시작 |
+| Server | `ClientHandler` | 플레이어별 수신, 송신 |
+| Client | `ServerConnection` | 서버 연결, 수신 스레드 |
 
 앞으로 추가할 클래스:
 
@@ -82,9 +91,8 @@
 | --- | --- | --- | --- |
 | 11 | Common | `GameRules` | 배치 가능 판정, 줄 제거, 점수 계산, 승패 판정 |
 | 11 | Client | `BlockTrayPanel`, `BoardPanel` 확장 | `GameState` 표시, 마우스로 블록 선택 및 배치 |
-| 12 | Common | `Protocol` | 메시지 형식 정의, 변환 |
-| 12 | Server | `GameServer`, `ClientHandler`, `GameRoom` | 접속 수락, 플레이어별 수신, 게임 진행 |
-| 12 | Client | `ServerConnection` | 서버 연결, 수신 스레드 |
+| 12 | Common | `Protocol` 확장 | 나머지 메시지 추가 |
+| 12 | Server | `GameRoom` | 게임 진행, 제한 시간 |
 
 ## 5. 스레드 구조
 
@@ -136,6 +144,6 @@ Swing 컴포넌트는 EDT에서만 변경한다. 수신 스레드에서 직접 �
 | --- | --- | --- |
 | 10 | 프로젝트 설계, 기본 게임 화면 | 완료 |
 | 11 | 블록 배치, 줄 제거, 점수 계산 | 예정 |
-| 12 | 소켓 통신, 2인용 보드 동기화, 제한 시간 | 예정 |
+| 12 | 소켓 통신, 2인용 보드 동기화, 제한 시간 | 접속 과정 구현 |
 | 13 | 실시간 채팅, 대전 플레이 | 예정 |
 | 14 이후 | 추가 기능, 오류 수정, 통합 테스트 | 예정 |
