@@ -1,6 +1,6 @@
 # 블록 매치
 
-2인 협동 블록 퍼즐 게임입니다. 설계 내용은 [Common/docs/DESIGN.md](Common/docs/DESIGN.md)를 참고하세요.
+2인 대전 블록 퍼즐 게임입니다. 설계 내용은 [Common/docs/DESIGN.md](Common/docs/DESIGN.md)를 참고하세요.
 
 | 폴더 | 역할 |
 | --- | --- |

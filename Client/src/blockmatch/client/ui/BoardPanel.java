@@ -7,7 +7,7 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics;
 
-/** 두 플레이어가 공유하는 보드. 지금은 빈 격자만 그린다. */
+/** 플레이어 한 명의 보드. 지금은 빈 격자만 그린다. */
 final class BoardPanel extends JComponent {
     BoardPanel() {
         setPreferredSize(new Dimension(440, 440));
