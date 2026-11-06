@@ -1,7 +1,7 @@
 package blockmatch.common;
 
 /**
- * 두 플레이어가 공유하는 8×8 보드.
+ * 플레이어 한 명의 8×8 보드.
  * 각 칸은 EMPTY 또는 블록의 색상 번호(BlockShape#getColorId)를 저장한다.
  */
 public final class Board {

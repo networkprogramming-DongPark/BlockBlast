@@ -9,7 +9,7 @@ import javax.swing.SwingConstants;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 
-/** 보드 아래의 블록 트레이. 지금은 빈 칸만 표시한다. */
+/** 내 보드 아래의 블록 트레이. 지금은 빈 칸만 표시한다. */
 final class BlockTrayPanel extends JPanel {
     BlockTrayPanel() {
         super(new GridLayout(1, GameConfig.HAND_SIZE, 10, 0));
