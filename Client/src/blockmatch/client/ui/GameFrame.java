@@ -14,7 +14,7 @@ import java.awt.Insets;
 
 /**
  * 게임 메인 창. 내 보드와 상대 보드를 나란히 두고, 각 보드 위에 플레이어 정보를 표시한다.
- * 블록 트레이는 내 보드 아래에, 채팅은 오른쪽에 둔다.
+ * 블록 트레이는 두 보드 아래에 각각, 채팅은 오른쪽에 둔다.
  */
 public final class GameFrame extends JFrame {
     private static final int MY_COLUMN = 0;
@@ -42,6 +42,7 @@ public final class GameFrame extends JFrame {
         place(playArea, centerLabel("VS", 24f), CENTER_COLUMN, BOARD_ROW);
         place(playArea, new BoardPanel(), OPPONENT_COLUMN, BOARD_ROW);
         place(playArea, new BlockTrayPanel(), MY_COLUMN, TRAY_ROW);
+        place(playArea, new BlockTrayPanel(), OPPONENT_COLUMN, TRAY_ROW);
 
         JPanel root = new JPanel(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
