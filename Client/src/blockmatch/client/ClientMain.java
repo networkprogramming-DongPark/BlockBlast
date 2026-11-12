@@ -1,13 +1,17 @@
 package blockmatch.client;
 
 import blockmatch.client.ui.GameFrame;
+import blockmatch.common.GameRules;
+import blockmatch.common.GameState;
 
 import javax.swing.SwingUtilities;
+import java.util.Random;
 
 /** 클라이언트 진입점. 실행 인자: [닉네임] [서버 주소] */
 public final class ClientMain {
     private static final String DEFAULT_NICKNAME = "플레이어";
     private static final String DEFAULT_HOST = "localhost";
+    private static final String OPPONENT_NAME = "상대";
 
     private ClientMain() {
     }
@@ -17,7 +21,12 @@ public final class ClientMain {
         String host = args.length > 1 ? args[1] : DEFAULT_HOST;
 
         SwingUtilities.invokeLater(() -> {
-            GameFrame frame = new GameFrame();
+            // 11주차는 내 보드에서 혼자 플레이한다. 12주차부터 상태는 서버가 보내 준다.
+            GameState state = new GameState(nickname, OPPONENT_NAME);
+            GameRules rules = new GameRules(new Random());
+            rules.refillHandIfEmpty(state.getPlayer(0));
+
+            GameFrame frame = new GameFrame(state, rules);
             frame.setLocationRelativeTo(null);
             frame.setVisible(true);
 
