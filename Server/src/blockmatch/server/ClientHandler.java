@@ -19,6 +19,7 @@ final class ClientHandler implements Runnable {
     private final BufferedReader reader;
     private final BufferedWriter writer;
     private boolean joined;
+    private boolean rejected;
 
     ClientHandler(Socket socket, GameServer server) throws IOException {
         this.socket = socket;
@@ -32,21 +33,35 @@ final class ClientHandler implements Runnable {
     public void run() {
         try (socket) {
             String line;
-            while ((line = reader.readLine()) != null) {
+            // 입장이 거부되면 연결을 닫는다.
+            while (!rejected && (line = reader.readLine()) != null) {
                 System.out.println("수신 " + address + ": " + line);
                 handle(line);
             }
         } catch (IOException e) {
             System.out.println("통신 오류 " + address + ": " + e.getMessage());
+        } finally {
+            // 정상 종료든 강제 종료든 자리를 비우고 상대에게 알린다.
+            server.leave(this);
         }
         System.out.println("접속 종료: " + address);
     }
 
     private void handle(String line) throws IOException {
-        String[] parts = Protocol.decode(line);
-        if (parts[0].equals(Protocol.JOIN) && parts.length >= 2 && !joined) {
-            joined = true;
-            server.join(this, parts[1]);
+        // 값이 하나뿐인 메시지의 값에는 "|"가 들어갈 수 있으므로 종류와 값 두 덩어리로만 나눈다.
+        String[] parts = Protocol.decode(line, 2);
+        if (parts.length < 2) {
+            return;
+        }
+        switch (parts[0]) {
+            case Protocol.JOIN -> {
+                if (!joined) {
+                    joined = server.join(this, parts[1]);
+                    rejected = !joined;
+                }
+            }
+            case Protocol.CHAT -> server.chat(this, parts[1]);
+            default -> System.out.println("알 수 없는 메시지 " + address + ": " + line);
         }
     }
 

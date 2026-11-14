@@ -24,6 +24,8 @@ final class BoardPanel extends JComponent {
     BoardPanel(Board board) {
         this.board = board;
         setPreferredSize(new Dimension(440, 440));
+        // 채팅창을 열면 게임 화면이 줄어들 수 있도록 줄어드는 한계를 정해 둔다.
+        setMinimumSize(new Dimension(8 * COUNT, 8 * COUNT));
     }
 
     /** 한 칸의 크기(px). 오른쪽·아래쪽 테두리 1px을 확보한다. */

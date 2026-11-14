@@ -3,6 +3,7 @@ package blockmatch.client;
 import blockmatch.client.ui.GameFrame;
 import blockmatch.common.GameRules;
 import blockmatch.common.GameState;
+import blockmatch.common.Protocol;
 
 import javax.swing.SwingUtilities;
 import java.util.Random;
@@ -31,8 +32,10 @@ public final class ClientMain {
             frame.setVisible(true);
 
             // Swing 컴포넌트는 EDT에서만 변경한다.
-            new ServerConnection(host, nickname,
-                    message -> SwingUtilities.invokeLater(() -> frame.showMessage(message))).start();
+            ServerConnection connection = new ServerConnection(host, nickname,
+                    message -> SwingUtilities.invokeLater(() -> frame.showMessage(message)));
+            frame.setChatSender(text -> connection.send(Protocol.CHAT, text));
+            connection.start();
         });
     }
 }

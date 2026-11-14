@@ -28,6 +28,7 @@ final class BlockTrayPanel extends JComponent {
     BlockTrayPanel(PlayerState player) {
         this.player = player;
         setPreferredSize(new Dimension(440, 100));
+        setMinimumSize(new Dimension(150, 100));
     }
 
     Rectangle slotBounds(int slot) {
