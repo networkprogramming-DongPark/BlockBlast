@@ -1,6 +1,5 @@
 package blockmatch.client.ui;
 
-import blockmatch.common.GameRules;
 import blockmatch.common.GameState;
 import blockmatch.common.PlayerState;
 
@@ -26,7 +25,7 @@ import java.util.function.Predicate;
  * 게임 메인 창. 내 보드와 상대 보드를 나란히 두고, 각 보드 위에 플레이어 정보를 표시한다.
  * 블록 트레이는 두 보드 아래에 각각 둔다. 채팅은 오른쪽 아래 버튼으로 열고 닫는 패널이다.
  * 창 크기는 바뀌지 않고, 채팅을 열면 그 폭만큼 게임 화면이 줄어들어 가려지는 곳 없이 모두 보인다.
- * 내 트레이의 블록을 끌어 내 보드에 놓을 수 있다.
+ * 내 트레이의 블록을 끌어 내 보드에 놓을 수 있다. 놓는 요청은 서버로 보내고, 서버가 보낸 상태로 두 보드를 다시 그린다.
  */
 public final class GameFrame extends JFrame {
     private static final int MY_COLUMN = 0;
@@ -36,7 +35,7 @@ public final class GameFrame extends JFrame {
     private static final int CAPTION_ROW = 1;
     private static final int BOARD_ROW = 2;
     private static final int TRAY_ROW = 3;
-    /** 지금은 항상 0번이 나다. 12주차에 서버가 WELCOME으로 알려 준 번호로 바꾼다. */
+    /** 화면용 GameState에서는 0번이 항상 나, 1번이 상대다. 서버 번호와의 변환은 GameSession이 한다. */
     private static final int MY_PLAYER = 0;
     private static final int OPPONENT_PLAYER = 1;
 
@@ -48,36 +47,53 @@ public final class GameFrame extends JFrame {
     /** 자주 쓰는 문구. 누르면 바로 채팅으로 보낸다. */
     private static final String[] QUICK_PHRASES = {"블록을 빨리 놔주세요", "잘하시네요!", "잠깐만 기다려 주세요"};
 
+    /** 블록 배치 요청을 서버로 보낸다. 보냈으면 true. */
+    public interface PlaceSender {
+        boolean send(int handIndex, int row, int col);
+    }
+
     private final ChatPanel chatPanel = new ChatPanel();
+    private final PlayerState me;
+    private final PlayerState opponent;
+    private final PlayerInfoPanel myInfo;
+    private final PlayerInfoPanel opponentInfo;
+    private final BoardPanel myBoard;
+    private final BoardPanel opponentBoard;
+    private final BlockTrayPanel myTray;
+    private final BlockTrayPanel opponentTray;
+    private PlaceSender placeSender = (handIndex, row, col) -> false;
     /** 내가 보낸 채팅은 "이름: 내용"으로 돌아온다. 닫힌 동안 내가 보낸 것은 안 읽은 메시지로 세지 않는다. */
     private final String myChatPrefix;
     private final JButton chatToggle = new JButton();
     /** 채팅창이 닫힌 동안 도착한 메시지 수. 다시 열면 0으로 돌아간다. */
     private int unreadCount;
 
-    public GameFrame(GameState state, GameRules rules) {
+    public GameFrame(GameState state) {
         super("블록 매치");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        PlayerState me = state.getPlayer(MY_PLAYER);
-        PlayerState opponent = state.getPlayer(OPPONENT_PLAYER);
+        me = state.getPlayer(MY_PLAYER);
+        opponent = state.getPlayer(OPPONENT_PLAYER);
         myChatPrefix = me.getName() + ": ";
-        PlayerInfoPanel myInfo = new PlayerInfoPanel(me.getName() + " · 나");
-        BoardPanel myBoard = new BoardPanel(me.getBoard());
-        BlockTrayPanel myTray = new BlockTrayPanel(me);
+        myInfo = new PlayerInfoPanel(me.getName() + " · 나");
+        opponentInfo = new PlayerInfoPanel(opponent.getName());
+        myBoard = new BoardPanel(me.getBoard());
+        opponentBoard = new BoardPanel(opponent.getBoard());
+        myTray = new BlockTrayPanel(me);
+        opponentTray = new BlockTrayPanel(opponent);
 
         // 플레이어 정보와 보드의 열을 맞추기 위해 한 격자에 함께 배치한다.
         JPanel playArea = new JPanel(new GridBagLayout());
         place(playArea, myInfo, MY_COLUMN, INFO_ROW);
         place(playArea, centerLabel("블록 매치", 20f), CENTER_COLUMN, INFO_ROW);
-        place(playArea, new PlayerInfoPanel(opponent.getName()), OPPONENT_COLUMN, INFO_ROW);
+        place(playArea, opponentInfo, OPPONENT_COLUMN, INFO_ROW);
         place(playArea, new JLabel("내 보드"), MY_COLUMN, CAPTION_ROW);
         place(playArea, new JLabel("상대 보드"), OPPONENT_COLUMN, CAPTION_ROW);
         place(playArea, myBoard, MY_COLUMN, BOARD_ROW);
         place(playArea, centerLabel("VS", 24f), CENTER_COLUMN, BOARD_ROW);
-        place(playArea, new BoardPanel(opponent.getBoard()), OPPONENT_COLUMN, BOARD_ROW);
+        place(playArea, opponentBoard, OPPONENT_COLUMN, BOARD_ROW);
         place(playArea, myTray, MY_COLUMN, TRAY_ROW);
-        place(playArea, new BlockTrayPanel(opponent), OPPONENT_COLUMN, TRAY_ROW);
+        place(playArea, opponentTray, OPPONENT_COLUMN, TRAY_ROW);
 
         // 채팅 열기/닫기 버튼은 채팅창이 닫혀도 보이도록 창 오른쪽 아래에 따로 둔다.
         chatToggle.setFocusable(false);
@@ -105,7 +121,7 @@ public final class GameFrame extends JFrame {
         root.add(bottomBar, BorderLayout.SOUTH);
 
         setContentPane(root);
-        new BlockDragHandler(this, me, rules, myTray, myBoard, () -> myInfo.setScore(me.getScore()));
+        new BlockDragHandler(this, me, myTray, myBoard, this::requestPlace);
 
         // 창 크기는 채팅창 없이 게임 화면만으로 정하고, 그 뒤에 채팅창을 연다. 그러면 창 크기는 그대로이고
         // 채팅창이 차지하는 폭만큼 게임 화면이 줄어들어 가려지는 곳 없이 모두 보인다.
@@ -123,6 +139,35 @@ public final class GameFrame extends JFrame {
             unreadCount++;
             updateChatToggleText();
         }
+    }
+
+    /** 블록 배치 요청을 서버로 보내는 동작을 연결한다. */
+    public void setPlaceSender(PlaceSender sender) {
+        placeSender = sender;
+    }
+
+    /** START로 받은 두 플레이어의 닉네임을 표시한다. EDT에서 호출해야 한다. */
+    public void setPlayerNames(String myName, String opponentName) {
+        myInfo.setNickname(myName + " · 나");
+        opponentInfo.setNickname(opponentName);
+    }
+
+    /** GameState가 바뀐 뒤 두 플레이어의 점수, 보드, 트레이를 다시 그린다. EDT에서 호출해야 한다. */
+    public void refresh() {
+        myInfo.setScore(me.getScore());
+        opponentInfo.setScore(opponent.getScore());
+        myBoard.repaint();
+        opponentBoard.repaint();
+        myTray.repaint();
+        opponentTray.repaint();
+    }
+
+    private boolean requestPlace(int handIndex, int row, int col) {
+        if (placeSender.send(handIndex, row, col)) {
+            return true;
+        }
+        showMessage("서버에 연결되어 있지 않아 블록을 놓을 수 없습니다.");
+        return false;
     }
 
     /** 입력한 채팅을 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */

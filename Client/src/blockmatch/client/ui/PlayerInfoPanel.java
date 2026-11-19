@@ -7,18 +7,23 @@ import java.awt.Font;
 
 /** 보드 위쪽에 플레이어의 닉네임과 점수를 표시한다. */
 final class PlayerInfoPanel extends JPanel {
+    private final JLabel name = new JLabel();
     private final JLabel score = new JLabel();
 
     PlayerInfoPanel(String nickname) {
         super(new BorderLayout(12, 0));
 
-        JLabel name = new JLabel(nickname);
+        name.setText(nickname);
         name.setFont(name.getFont().deriveFont(Font.BOLD, 16f));
         add(name, BorderLayout.WEST);
 
         score.setFont(score.getFont().deriveFont(Font.BOLD, 26f));
         setScore(0);
         add(score, BorderLayout.CENTER);
+    }
+
+    void setNickname(String nickname) {
+        name.setText(nickname);
     }
 
     void setScore(int points) {
