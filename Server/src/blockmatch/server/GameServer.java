@@ -14,6 +14,9 @@ import java.util.Arrays;
  * 게임 중에 한 명이 나가면 남은 사람에게 LEAVE를 보내고 자리를 비워 둔다.
  * 그 자리에 다시 들어오면(같은 이름이면 같은 번호로) 남은 사람에게 REJOIN을 보낸다.
  * 둘 다 나가면 처음 상태로 돌아가 새 게임을 시작할 수 있다.
+ *
+ * 게임이 시작되면 GameRoom이 게임 상태의 원본을 갖는다. 클라이언트의 PLACE 요청을 판정하고,
+ * 놓았으면 두 플레이어 모두에게 STATE를, 놓을 수 없으면 요청한 플레이어에게만 REJECT를 보낸다.
  */
 final class GameServer {
     private static final int MAX_NAME_LENGTH = 10;
@@ -23,6 +26,8 @@ final class GameServer {
     /** 자리별 플레이어 이름. 게임이 시작된 뒤에는 나간 사람의 이름도 남겨 두어 재접속을 알아본다. */
     private final String[] names = new String[GameConfig.PLAYER_COUNT];
     private boolean started;
+    /** 게임이 시작된 동안만 있다. 둘 다 나가면 버린다. */
+    private GameRoom room;
 
     GameServer(int port) {
         this.port = port;
@@ -68,11 +73,16 @@ final class GameServer {
         String start = Protocol.encode(Protocol.START, names[0], names[1], GameConfig.TIME_LIMIT_SECONDS);
         if (!started) {
             started = true;
+            room = new GameRoom(names[0], names[1]);
+            String state = room.stateMessage();
             for (ClientHandler each : players) {
                 each.send(start);
+                each.send(state);
             }
         } else {
+            // 다시 들어온 플레이어는 진행 중이던 보드와 점수를 그대로 이어받는다.
             player.send(start);
+            player.send(room.stateMessage());
             sendQuietly(players[otherSlot(slot)], Protocol.encode(Protocol.REJOIN, name));
             System.out.println((returning ? "재접속: " : "새 플레이어 입장: ") + name);
         }
@@ -95,6 +105,7 @@ final class GameServer {
         if (remaining == null) {
             // 둘 다 나갔으면 처음 상태로 돌아가 새 게임을 받을 수 있게 한다.
             started = false;
+            room = null;
             Arrays.fill(names, null);
             return;
         }
@@ -119,6 +130,49 @@ final class GameServer {
         String message = Protocol.encode(Protocol.CHAT, names[slot], text);
         for (ClientHandler each : players) {
             sendQuietly(each, message);
+        }
+    }
+
+    /**
+     * 블록 배치 요청을 판정한다. values는 "블록칸|행|열"이다.
+     * 놓았으면 바뀐 상태를 자리에 있는 모두에게 보내고, 아니면 요청한 플레이어에게만 거부 사유를 보낸다.
+     */
+    synchronized void place(ClientHandler sender, String values) throws IOException {
+        int slot = indexOf(sender);
+        if (slot < 0 || room == null) {
+            sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_NOT_PLAYING));
+            return;
+        }
+        int[] request = parsePlace(values);
+        if (request == null) {
+            sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_BAD_REQUEST));
+            return;
+        }
+        if (!room.place(slot, request[0], request[1], request[2])) {
+            sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_CANNOT_PLACE));
+            return;
+        }
+        String state = room.stateMessage();
+        for (ClientHandler each : players) {
+            sendQuietly(each, state);
+        }
+    }
+
+    /** "블록칸|행|열"을 숫자 세 개로 바꾼다. 개수나 형식이 틀리거나 블록칸이 범위 밖이면 null. */
+    private static int[] parsePlace(String values) {
+        String[] parts = Protocol.decode(values);
+        if (parts.length != 3) {
+            return null;
+        }
+        try {
+            int handIndex = Integer.parseInt(parts[0]);
+            if (handIndex < 0 || handIndex >= GameConfig.HAND_SIZE) {
+                return null;
+            }
+            // 행과 열이 보드 밖이면 GameRules가 놓을 수 없다고 판정한다.
+            return new int[] {handIndex, Integer.parseInt(parts[1]), Integer.parseInt(parts[2])};
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

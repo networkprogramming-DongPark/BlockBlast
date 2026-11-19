@@ -61,6 +61,7 @@ final class ClientHandler implements Runnable {
                 }
             }
             case Protocol.CHAT -> server.chat(this, parts[1]);
+            case Protocol.PLACE -> server.place(this, parts[1]);
             default -> System.out.println("알 수 없는 메시지 " + address + ": " + line);
         }
     }

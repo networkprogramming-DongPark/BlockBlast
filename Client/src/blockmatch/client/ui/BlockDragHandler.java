@@ -18,13 +18,15 @@ import java.awt.event.MouseEvent;
 /**
  * 내 트레이의 블록을 마우스로 끌어 내 보드에 놓는다.
  * 블록이 트레이에서 보드로 넘어가야 하므로, 끄는 블록은 창 전체를 덮는 glass pane에 그린다.
+ *
+ * 버튼을 놓으면 직접 배치하지 않고 서버에 배치 요청(PLACE)만 보낸다. 실제 배치와 점수 계산은 서버가 하고,
+ * 서버가 보낸 STATE로 화면이 바뀐다. 놓을 수 없는 자리는 서버에 보내기 전에 걸러 낸다.
  */
 final class BlockDragHandler extends MouseAdapter {
     private final PlayerState player;
-    private final GameRules rules;
     private final BlockTrayPanel tray;
     private final BoardPanel board;
-    private final Runnable onPlaced;
+    private final GameFrame.PlaceSender sender;
     private final DragLayer layer = new DragLayer();
 
     /** 끌고 있는 블록의 트레이 칸 번호. 끌고 있지 않으면 -1. */
@@ -38,13 +40,12 @@ final class BlockDragHandler extends MouseAdapter {
     /** 보드 위에서는 칸에 맞춘 미리보기만 보여 주고, 끄는 블록은 그리지 않는다. */
     private boolean overBoard;
 
-    BlockDragHandler(JFrame frame, PlayerState player, GameRules rules, BlockTrayPanel tray, BoardPanel board,
-                     Runnable onPlaced) {
+    BlockDragHandler(JFrame frame, PlayerState player, BlockTrayPanel tray, BoardPanel board,
+                     GameFrame.PlaceSender sender) {
         this.player = player;
-        this.rules = rules;
         this.tray = tray;
         this.board = board;
-        this.onPlaced = onPlaced;
+        this.sender = sender;
         frame.setGlassPane(layer);
         tray.addMouseListener(this);
         tray.addMouseMotionListener(this);
@@ -82,15 +83,17 @@ final class BlockDragHandler extends MouseAdapter {
             return;
         }
         Cell target = targetCell(e);
-        boolean placed = target != null && rules.place(player, slot, target.row(), target.col());
+        boolean canPlace = target != null
+                && GameRules.canPlace(player.getBoard(), shape, target.row(), target.col());
+        int handIndex = slot;
 
         slot = -1;
         shape = null;
         tray.setHiddenSlot(-1);
         board.clearPreview();
         layer.setVisible(false);
-        if (placed) {
-            onPlaced.run();
+        if (canPlace) {
+            sender.send(handIndex, target.row(), target.col());
         }
     }
 

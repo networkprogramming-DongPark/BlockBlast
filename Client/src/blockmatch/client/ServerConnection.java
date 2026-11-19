@@ -12,21 +12,36 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
-/** 서버 연결. 수신 스레드에서 동작하며, 상태 메시지를 listener로 전달한다. */
+/**
+ * 서버 연결. 수신 스레드에서 동작한다.
+ * 채팅 영역에 보여 줄 문장은 listener로, 게임 진행 메시지(WELCOME, START, STATE)는 game으로 전달한다.
+ */
 final class ServerConnection {
+    /** 게임 진행 메시지를 받는 쪽. 수신 스레드에서 호출된다. */
+    interface GameListener {
+        void onWelcome(int number);
+
+        void onStart(String firstPlayer, String secondPlayer);
+
+        /** parts는 STATE 메시지를 "|"로 나눈 것이다. */
+        void onState(String[] parts);
+    }
+
     private final String host;
     private final String nickname;
     private final Consumer<String> listener;
+    private final GameListener game;
     /** 연결된 동안만 값이 있다. 수신 스레드가 쓰고 EDT가 send()로 읽는다. */
     private volatile BufferedWriter writer;
     /** 아래 두 값은 수신 스레드(handle)에서만 읽고 쓴다. 상대가 다시 들어왔을 때 재접속인지 알아보는 데 쓴다. */
     private int myNumber = -1;
     private String opponentName = "";
 
-    ServerConnection(String host, String nickname, Consumer<String> listener) {
+    ServerConnection(String host, String nickname, Consumer<String> listener, GameListener game) {
         this.host = host;
         this.nickname = nickname;
         this.listener = listener;
+        this.game = game;
     }
 
     void start() {
@@ -84,13 +99,16 @@ final class ServerConnection {
         switch (parts[0]) {
             case Protocol.WELCOME -> {
                 myNumber = parseNumber(parts[1]);
+                game.onWelcome(myNumber);
                 listener.accept("입장했습니다. 플레이어 번호: " + parts[1]);
             }
             case Protocol.START -> {
                 // 내가 0번이면 상대는 1번이다.
                 opponentName = myNumber == 0 ? parts[2] : parts[1];
+                game.onStart(parts[1], parts[2]);
                 listener.accept("게임 시작: " + parts[1] + " vs " + parts[2] + " (제한 시간 " + parts[3] + "초)");
             }
+            case Protocol.STATE -> game.onState(parts);
             case Protocol.LEAVE -> listener.accept("상대 " + parts[1] + "님이 접속을 종료했습니다.");
             case Protocol.REJOIN -> {
                 boolean returning = parts[1].equals(opponentName);
@@ -119,7 +137,8 @@ final class ServerConnection {
         return switch (reason) {
             case Protocol.REASON_BAD_NAME -> "사용할 수 없는 닉네임입니다. (비었거나 10자 초과, '|' 포함, 상대와 같은 이름)";
             case Protocol.REASON_ROOM_FULL -> "방이 가득 차서 입장할 수 없습니다.";
-            case Protocol.REASON_NOT_PLAYING -> "게임이 시작된 뒤에 채팅할 수 있습니다.";
+            case Protocol.REASON_NOT_PLAYING -> "게임이 시작된 뒤에 채팅하거나 블록을 놓을 수 있습니다.";
+            case Protocol.REASON_CANNOT_PLACE -> "그 자리에는 블록을 놓을 수 없습니다.";
             case Protocol.REASON_BAD_REQUEST ->
                     "보낼 수 없는 메시지입니다. (비어 있거나 " + GameConfig.CHAT_MAX_LENGTH + "자를 넘음)";
             default -> "서버가 요청을 거부했습니다: " + reason;
