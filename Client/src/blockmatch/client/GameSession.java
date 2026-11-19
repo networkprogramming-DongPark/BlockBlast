@@ -34,15 +34,50 @@ final class GameSession implements ServerConnection.GameListener {
     }
 
     @Override
-    public void onStart(String firstPlayer, String secondPlayer) {
-        SwingUtilities.invokeLater(() -> frame.setPlayerNames(
-                myNumber == 0 ? firstPlayer : secondPlayer,
-                myNumber == 0 ? secondPlayer : firstPlayer));
+    public void onStart(String firstPlayer, String secondPlayer, int seconds) {
+        SwingUtilities.invokeLater(() -> {
+            frame.setPlayerNames(myNumber == 0 ? firstPlayer : secondPlayer, myNumber == 0 ? secondPlayer : firstPlayer);
+            frame.startTimer(seconds);
+        });
     }
 
     @Override
     public void onState(String[] parts) {
         SwingUtilities.invokeLater(() -> applyState(parts));
+    }
+
+    @Override
+    public void onGameOver(String[] parts) {
+        SwingUtilities.invokeLater(() -> applyGameOver(parts));
+    }
+
+    /** parts는 GAMEOVER 메시지를 나눈 것이다: [GAMEOVER, 승자번호, 사유, 점수0, 점수1] */
+    private void applyGameOver(String[] parts) {
+        int winner;
+        int myScore;
+        int opponentScore;
+        try {
+            winner = Integer.parseInt(parts[1]);
+            myScore = Integer.parseInt(parts[3 + myNumber]);
+            opponentScore = Integer.parseInt(parts[3 + (1 - myNumber)]);
+        } catch (RuntimeException e) {
+            frame.showMessage("잘못된 게임 종료 메시지를 받았습니다.");
+            return;
+        }
+        String scores = " (내 점수 " + myScore + "점, 상대 점수 " + opponentScore + "점)";
+        if (winner == Protocol.DRAW) {
+            frame.showGameOver("무승부", null, "시간이 끝났습니다. 점수가 같아 무승부입니다." + scores, true);
+            return;
+        }
+        boolean win = winner == myNumber;
+        boolean noMoves = Protocol.END_NO_MOVES.equals(parts[2]);
+        String detail;
+        if (noMoves) {
+            detail = win ? "상대가 더 이상 놓을 수 있는 블록이 없어 승리했습니다." : "놓을 수 있는 블록이 없어 패배했습니다.";
+        } else {
+            detail = win ? "시간이 끝났습니다. 점수가 더 높아 승리했습니다." : "시간이 끝났습니다. 점수가 낮아 패배했습니다.";
+        }
+        frame.showGameOver(win ? "승리!" : "패배", win, detail + scores, !noMoves);
     }
 
     /** parts는 STATE 메시지를 나눈 것이다: [STATE, 점수0, 보드0, 블록들0, 점수1, 보드1, 블록들1] */

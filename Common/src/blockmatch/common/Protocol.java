@@ -21,6 +21,11 @@ public final class Protocol {
     public static final String PLACE = "PLACE";
     /** 서버 → 클라이언트: "STATE|점수0|보드0|블록들0|점수1|보드1|블록들1". 두 플레이어의 상태 전체. */
     public static final String STATE = "STATE";
+    /**
+     * 서버 → 클라이언트: "GAMEOVER|승자번호|사유|점수0|점수1". 승자번호는 0 또는 1이고, 무승부면 -1이다.
+     * 사유는 END_TIME_UP(제한 시간 종료, 점수로 승패) 또는 END_NO_MOVES(승자의 상대가 놓을 수 있는 블록이 없음)다.
+     */
+    public static final String GAMEOVER = "GAMEOVER";
 
     /** REJECT의 사유 코드. */
     public static final String REASON_BAD_NAME = "BAD_NAME";
@@ -28,6 +33,12 @@ public final class Protocol {
     public static final String REASON_CANNOT_PLACE = "CANNOT_PLACE";
     public static final String REASON_NOT_PLAYING = "NOT_PLAYING";
     public static final String REASON_ROOM_FULL = "ROOM_FULL";
+
+    /** GAMEOVER의 종료 사유. */
+    public static final String END_TIME_UP = "TIME_UP";
+    public static final String END_NO_MOVES = "NO_MOVES";
+    /** GAMEOVER에서 승자번호 대신 쓰는 무승부 표시. */
+    public static final int DRAW = -1;
 
     private static final String SEPARATOR = "|";
     /** STATE의 블록들 값에서 블록 이름 사이의 구분자와, 이미 사용한 칸의 표시. */

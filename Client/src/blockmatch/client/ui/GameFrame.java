@@ -62,6 +62,9 @@ public final class GameFrame extends JFrame {
     private final BlockTrayPanel myTray;
     private final BlockTrayPanel opponentTray;
     private PlaceSender placeSender = (handIndex, row, col) -> false;
+    private final MatchStatusPanel status = new MatchStatusPanel();
+    /** GAMEOVER를 받은 뒤에는 블록을 놓지 않는다. */
+    private boolean gameOver;
     /** 내가 보낸 채팅은 "이름: 내용"으로 돌아온다. 닫힌 동안 내가 보낸 것은 안 읽은 메시지로 세지 않는다. */
     private final String myChatPrefix;
     private final JButton chatToggle = new JButton();
@@ -90,7 +93,7 @@ public final class GameFrame extends JFrame {
         place(playArea, new JLabel("내 보드"), MY_COLUMN, CAPTION_ROW);
         place(playArea, new JLabel("상대 보드"), OPPONENT_COLUMN, CAPTION_ROW);
         place(playArea, myBoard, MY_COLUMN, BOARD_ROW);
-        place(playArea, centerLabel("VS", 24f), CENTER_COLUMN, BOARD_ROW);
+        place(playArea, status, CENTER_COLUMN, BOARD_ROW);
         place(playArea, opponentBoard, OPPONENT_COLUMN, BOARD_ROW);
         place(playArea, myTray, MY_COLUMN, TRAY_ROW);
         place(playArea, opponentTray, OPPONENT_COLUMN, TRAY_ROW);
@@ -152,6 +155,25 @@ public final class GameFrame extends JFrame {
         opponentInfo.setNickname(opponentName);
     }
 
+    /** START를 받으면 남은 시간 표시를 시작한다. 다시 들어온 경우에는 남은 시간부터 센다. EDT에서 호출해야 한다. */
+    public void startTimer(int seconds) {
+        gameOver = false;
+        status.startCountdown(seconds);
+    }
+
+    /**
+     * 게임 결과를 가운데에 크게 표시하고, 자세한 내용은 채팅 영역에 남긴다. 이후에는 블록을 놓을 수 없다.
+     * EDT에서 호출해야 한다.
+     *
+     * @param win 이겼으면 true, 졌으면 false, 무승부면 null
+     * @param timeUp 제한 시간이 끝나서 끝났으면 true
+     */
+    public void showGameOver(String headline, Boolean win, String detail, boolean timeUp) {
+        gameOver = true;
+        status.showResult(headline, win, timeUp);
+        showMessage(detail);
+    }
+
     /** GameState가 바뀐 뒤 두 플레이어의 점수, 보드, 트레이를 다시 그린다. EDT에서 호출해야 한다. */
     public void refresh() {
         myInfo.setScore(me.getScore());
@@ -163,6 +185,10 @@ public final class GameFrame extends JFrame {
     }
 
     private boolean requestPlace(int handIndex, int row, int col) {
+        if (gameOver) {
+            showMessage("게임이 끝나 더 이상 블록을 놓을 수 없습니다.");
+            return true;
+        }
         if (placeSender.send(handIndex, row, col)) {
             return true;
         }

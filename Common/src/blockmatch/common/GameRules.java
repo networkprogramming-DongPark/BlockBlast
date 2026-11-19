@@ -1,5 +1,7 @@
 package blockmatch.common;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -68,7 +70,13 @@ public final class GameRules {
         return true;
     }
 
-    /** 손이 모두 비어 있으면 무작위 블록 3개를 채운다. 게임 시작 때도 호출한다. */
+    /**
+     * 손이 모두 비어 있으면 무작위 블록 3개를 채운다. 게임 시작 때도 호출한다.
+     *
+     * 지금 보드에 놓을 자리가 있는 모양 중에서만 고르므로, 받은 블록 3개는 각각 지금 보드에 놓을 수 있다.
+     * 다만 세 블록을 모두 놓을 수 있는 순서까지는 보장하지 않는다. 앞의 블록을 잘못 놓으면 나머지 블록을
+     * 놓을 곳이 없어질 수 있고, 어디에 놓을지 판단하는 것도 게임의 일부로 남겨 둔다.
+     */
     public void refillHandIfEmpty(PlayerState player) {
         BlockShape[] hand = player.getHand();
         for (BlockShape shape : hand) {
@@ -76,9 +84,40 @@ public final class GameRules {
                 return;
             }
         }
-        for (int i = 0; i < hand.length; i++) {
-            hand[i] = SHAPES[random.nextInt(SHAPES.length)];
+        List<BlockShape> placeable = new ArrayList<>();
+        for (BlockShape shape : SHAPES) {
+            if (canPlaceAnywhere(player.getBoard(), shape)) {
+                placeable.add(shape);
+            }
         }
+        // 가득 찬 줄은 놓자마자 지워지므로 보드에는 항상 빈칸이 남고, 1칸 블록(SINGLE)은 언제나 놓을 수 있다.
+        // 그래도 만일을 대비해 놓을 수 있는 모양이 없으면 전체에서 고른다.
+        List<BlockShape> candidates = placeable.isEmpty() ? List.of(SHAPES) : placeable;
+        for (int i = 0; i < hand.length; i++) {
+            hand[i] = candidates.get(random.nextInt(candidates.size()));
+        }
+    }
+
+    /** 보드의 어느 자리에든 이 블록을 놓을 수 있으면 true. */
+    public static boolean canPlaceAnywhere(Board board, BlockShape shape) {
+        for (int row = 0; row + shape.getHeight() <= GameConfig.BOARD_SIZE; row++) {
+            for (int col = 0; col + shape.getWidth() <= GameConfig.BOARD_SIZE; col++) {
+                if (canPlace(board, shape, row, col)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** 손에 남은 블록 중 하나라도 보드에 놓을 수 있으면 true. 하나도 없으면 그 플레이어는 더 진행할 수 없다. */
+    public static boolean hasAnyMove(PlayerState player) {
+        for (BlockShape shape : player.getHand()) {
+            if (shape != null && canPlaceAnywhere(player.getBoard(), shape)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static int score(int placedCells, int clearedLines) {

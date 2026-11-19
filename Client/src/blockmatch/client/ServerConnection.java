@@ -21,10 +21,14 @@ final class ServerConnection {
     interface GameListener {
         void onWelcome(int number);
 
-        void onStart(String firstPlayer, String secondPlayer);
+        /** seconds는 남은 제한 시간(초)이다. 처음 시작이면 전체 제한 시간, 다시 들어온 경우에는 남은 시간이다. */
+        void onStart(String firstPlayer, String secondPlayer, int seconds);
 
         /** parts는 STATE 메시지를 "|"로 나눈 것이다. */
         void onState(String[] parts);
+
+        /** parts는 GAMEOVER 메시지를 "|"로 나눈 것이다. */
+        void onGameOver(String[] parts);
     }
 
     private final String host;
@@ -105,10 +109,12 @@ final class ServerConnection {
             case Protocol.START -> {
                 // 내가 0번이면 상대는 1번이다.
                 opponentName = myNumber == 0 ? parts[2] : parts[1];
-                game.onStart(parts[1], parts[2]);
-                listener.accept("게임 시작: " + parts[1] + " vs " + parts[2] + " (제한 시간 " + parts[3] + "초)");
+                int seconds = parseNumber(parts[3]);
+                game.onStart(parts[1], parts[2], Math.max(0, seconds));
+                listener.accept("게임 시작: " + parts[1] + " vs " + parts[2] + " (남은 시간 " + parts[3] + "초)");
             }
             case Protocol.STATE -> game.onState(parts);
+            case Protocol.GAMEOVER -> game.onGameOver(parts);
             case Protocol.LEAVE -> listener.accept("상대 " + parts[1] + "님이 접속을 종료했습니다.");
             case Protocol.REJOIN -> {
                 boolean returning = parts[1].equals(opponentName);
