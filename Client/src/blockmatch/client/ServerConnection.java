@@ -29,6 +29,12 @@ final class ServerConnection {
 
         /** parts는 GAMEOVER 메시지를 "|"로 나눈 것이다. */
         void onGameOver(String[] parts);
+
+        /** 닉네임이 거부되었거나 방이 가득 차서 들어가지 못했다. message는 사용자에게 보여 줄 이유다. */
+        void onJoinRejected(String message);
+
+        /** 서버에 접속하지 못했거나 연결이 끊겼다. close()로 직접 끊은 경우에는 부르지 않는다. */
+        void onDisconnected(String message);
     }
 
     private final String host;
@@ -37,6 +43,10 @@ final class ServerConnection {
     private final GameListener game;
     /** 연결된 동안만 값이 있다. 수신 스레드가 쓰고 EDT가 send()로 읽는다. */
     private volatile BufferedWriter writer;
+    /** close()에서 끊을 수 있도록 연결된 소켓을 기억한다. */
+    private volatile Socket socket;
+    /** close()로 직접 끊었으면 true. 이때는 연결이 끊겼다고 알리지 않는다. */
+    private volatile boolean closed;
     /** 아래 두 값은 수신 스레드(handle)에서만 읽고 쓴다. 상대가 다시 들어왔을 때 재접속인지 알아보는 데 쓴다. */
     private int myNumber = -1;
     private String opponentName = "";
@@ -54,12 +64,31 @@ final class ServerConnection {
         thread.start();
     }
 
+    /** 연결을 끊는다. 메인 화면으로 돌아갈 때 부른다. 어느 스레드에서 불러도 된다. */
+    void close() {
+        closed = true;
+        Socket current = socket;
+        if (current != null) {
+            try {
+                current.close(); // 수신 스레드의 readLine()이 예외로 끝난다.
+            } catch (IOException ignored) {
+                // 이미 닫혀 있으면 할 일이 없다.
+            }
+        }
+    }
+
     private void run() {
+        boolean connected = false;
         try (Socket socket = new Socket(host, GameConfig.DEFAULT_PORT);
              BufferedReader reader = new BufferedReader(
                      new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
              BufferedWriter out = new BufferedWriter(
                      new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+            this.socket = socket;
+            if (closed) {
+                return; // 접속하는 사이에 close()가 불렸다.
+            }
+            connected = true;
             writer = out;
             listener.accept("서버에 접속했습니다: " + socket.getRemoteSocketAddress());
             send(Protocol.JOIN, nickname);
@@ -68,9 +97,14 @@ final class ServerConnection {
             while ((line = reader.readLine()) != null) {
                 handle(line);
             }
-            listener.accept("서버와 연결이 끊어졌습니다.");
+            if (!closed) {
+                game.onDisconnected("서버와 연결이 끊어졌습니다.");
+            }
         } catch (IOException e) {
-            listener.accept("서버 연결 오류: " + e.getMessage());
+            if (!closed) {
+                game.onDisconnected(connected ? "서버와 연결이 끊어졌습니다. (" + e.getMessage() + ")"
+                        : "서버에 접속할 수 없습니다. 서버가 켜져 있는지 확인하세요. (" + e.getMessage() + ")");
+            }
         } finally {
             writer = null;
         }
@@ -104,7 +138,7 @@ final class ServerConnection {
             case Protocol.WELCOME -> {
                 myNumber = parseNumber(parts[1]);
                 game.onWelcome(myNumber);
-                listener.accept("입장했습니다. 플레이어 번호: " + parts[1]);
+                listener.accept("입장했습니다. 플레이어 번호: " + parts[1] + " (상대가 들어오면 게임이 시작됩니다)");
             }
             case Protocol.START -> {
                 // 내가 0번이면 상대는 1번이다.
@@ -126,7 +160,15 @@ final class ServerConnection {
                 String[] chat = Protocol.decode(line, 3);
                 listener.accept(chat.length >= 3 ? chat[1] + ": " + chat[2] : "알 수 없는 메시지: " + line);
             }
-            case Protocol.REJECT -> listener.accept(rejectText(parts.length >= 2 ? parts[1] : ""));
+            case Protocol.REJECT -> {
+                String reason = parts.length >= 2 ? parts[1] : "";
+                // 입장 단계의 거부는 게임을 할 수 없으므로 메인 화면으로 돌려보낸다. 나머지는 채팅 영역에 안내만 한다.
+                if (reason.equals(Protocol.REASON_BAD_NAME) || reason.equals(Protocol.REASON_ROOM_FULL)) {
+                    game.onJoinRejected(rejectText(reason));
+                } else {
+                    listener.accept(rejectText(reason));
+                }
+            }
             default -> listener.accept("알 수 없는 메시지: " + line);
         }
     }
@@ -141,7 +183,7 @@ final class ServerConnection {
 
     private static String rejectText(String reason) {
         return switch (reason) {
-            case Protocol.REASON_BAD_NAME -> "사용할 수 없는 닉네임입니다. (비었거나 10자 초과, '|' 포함, 상대와 같은 이름)";
+            case Protocol.REASON_BAD_NAME -> "사용할 수 없는 닉네임입니다. 상대와 같은 닉네임인지 확인하세요.";
             case Protocol.REASON_ROOM_FULL -> "방이 가득 차서 입장할 수 없습니다.";
             case Protocol.REASON_NOT_PLAYING -> "게임이 시작된 뒤에 채팅하거나 블록을 놓을 수 있습니다.";
             case Protocol.REASON_CANNOT_PLACE -> "그 자리에는 블록을 놓을 수 없습니다.";

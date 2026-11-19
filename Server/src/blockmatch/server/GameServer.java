@@ -24,8 +24,6 @@ import java.util.concurrent.TimeUnit;
  * 제한 시간이 끝나거나 한 플레이어가 더 놓을 블록이 없으면 두 플레이어 모두에게 GAMEOVER를 보낸다.
  */
 final class GameServer {
-    private static final int MAX_NAME_LENGTH = 10;
-
     private final int port;
     private final int timeLimitSeconds;
     /** 제한 시간이 끝나면 timeUp()을 부르는 타이머 스레드. 창을 닫을 때 서버가 남지 않도록 데몬 스레드로 만든다. */
@@ -65,7 +63,7 @@ final class GameServer {
      * @return 입장시켰으면 true. 이름이 잘못되었거나 자리가 없으면 REJECT를 보내고 false
      */
     synchronized boolean join(ClientHandler player, String name) throws IOException {
-        if (!isValidName(name) || isNameInUse(name)) {
+        if (!Protocol.isValidNickname(name) || isNameInUse(name)) {
             player.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_BAD_NAME));
             return false;
         }
@@ -99,9 +97,6 @@ final class GameServer {
             // 다시 들어온 플레이어는 진행 중이던 보드와 점수, 남은 시간을 그대로 이어받는다.
             player.send(Protocol.encode(Protocol.START, names[0], names[1], room.remainingSeconds()));
             player.send(room.stateMessage());
-            if (room.isOver()) {
-                player.send(room.gameOverMessage());
-            }
             sendQuietly(players[otherSlot(slot)], Protocol.encode(Protocol.REJOIN, name));
             System.out.println((returning ? "재접속: " : "새 플레이어 입장: ") + name);
         }
@@ -192,7 +187,11 @@ final class GameServer {
         }
     }
 
-    /** 게임 결과를 자리에 있는 모두에게 알리고 타이머를 멈춘다. 게임이 끝난 뒤에도 채팅은 할 수 있다. */
+    /**
+     * 게임 결과를 자리에 있는 모두에게 알리고 타이머를 멈춘 뒤, 방을 비워 다음 게임을 받을 준비를 한다.
+     * 클라이언트는 결과를 보여 준 뒤 메인 화면으로 돌아가 연결을 끊는다. 그 사이 남아 있는 연결은 자리가 없으므로
+     * 채팅이나 배치를 보내도 NOT_PLAYING으로 거부되고, 끝난 게임에 다시 들어오는 일도 없다.
+     */
     private void endGame() {
         String gameOver = room.gameOverMessage();
         System.out.println("게임 종료: " + gameOver);
@@ -203,6 +202,10 @@ final class GameServer {
             timeUpTask.cancel(false);
             timeUpTask = null;
         }
+        started = false;
+        room = null;
+        Arrays.fill(players, null);
+        Arrays.fill(names, null);
     }
 
     /** "블록칸|행|열"을 숫자 세 개로 바꾼다. 개수나 형식이 틀리거나 블록칸이 범위 밖이면 null. */
@@ -221,10 +224,6 @@ final class GameServer {
         } catch (NumberFormatException e) {
             return null;
         }
-    }
-
-    private static boolean isValidName(String name) {
-        return !name.isBlank() && name.length() <= MAX_NAME_LENGTH && name.indexOf('|') < 0;
     }
 
     private boolean isNameInUse(String name) {

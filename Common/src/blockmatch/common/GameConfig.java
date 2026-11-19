@@ -9,6 +9,7 @@ public final class GameConfig {
     public static final int TIME_LIMIT_SECONDS = 300;
     public static final int DEFAULT_PORT = 30000;
     public static final int CHAT_MAX_LENGTH = 100;
+    public static final int NICKNAME_MAX_LENGTH = 10;
 
     private GameConfig() {
     }
