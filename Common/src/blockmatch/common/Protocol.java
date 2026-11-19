@@ -48,6 +48,15 @@ public final class Protocol {
     private Protocol() {
     }
 
+    /**
+     * 쓸 수 있는 닉네임인지 확인한다. 메인 화면과 서버가 같은 규칙을 쓴다.
+     * 비어 있지 않고, NICKNAME_MAX_LENGTH자 이하이며, 메시지 구분자 "|"가 없어야 한다.
+     */
+    public static boolean isValidNickname(String nickname) {
+        return nickname != null && !nickname.isBlank()
+                && nickname.length() <= GameConfig.NICKNAME_MAX_LENGTH && !nickname.contains(SEPARATOR);
+    }
+
     public static String encode(String type, Object... values) {
         StringBuilder message = new StringBuilder(type);
         for (Object value : values) {

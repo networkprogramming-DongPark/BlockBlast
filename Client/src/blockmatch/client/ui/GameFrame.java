@@ -19,6 +19,8 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.Insets;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.function.Predicate;
 
 /**
@@ -70,10 +72,19 @@ public final class GameFrame extends JFrame {
     private final JButton chatToggle = new JButton();
     /** 채팅창이 닫힌 동안 도착한 메시지 수. 다시 열면 0으로 돌아간다. */
     private int unreadCount;
+    /** 창의 닫기 버튼을 눌렀을 때 할 일. ClientApp이 메인 화면으로 돌아가도록 연결한다. */
+    private Runnable onClose = () -> { };
 
     public GameFrame(GameState state) {
         super("블록 매치");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        // 닫기 버튼을 눌러도 프로그램을 끝내지 않고 onClose로 메인 화면에 돌아간다.
+        setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent event) {
+                onClose.run();
+            }
+        });
 
         me = state.getPlayer(MY_PLAYER);
         opponent = state.getPlayer(OPPONENT_PLAYER);
@@ -142,6 +153,11 @@ public final class GameFrame extends JFrame {
             unreadCount++;
             updateChatToggleText();
         }
+    }
+
+    /** 창의 닫기 버튼을 눌렀을 때 할 일을 연결한다. */
+    public void setOnClose(Runnable action) {
+        onClose = action;
     }
 
     /** 블록 배치 요청을 서버로 보내는 동작을 연결한다. */

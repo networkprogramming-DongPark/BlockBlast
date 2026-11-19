@@ -5,7 +5,9 @@ import blockmatch.common.GameConfig;
 import blockmatch.common.GameState;
 import blockmatch.common.Protocol;
 
+import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
+import java.util.function.Consumer;
 
 /**
  * 서버가 보내 준 게임 진행 메시지를 화면용 GameState에 반영한다.
@@ -13,6 +15,9 @@ import javax.swing.SwingUtilities;
  * 화면용 GameState는 0번이 항상 나, 1번이 항상 상대다. 서버의 플레이어 번호(WELCOME으로 받음)와 다를 수 있으므로
  * STATE를 받으면 서버 번호를 화면 번호로 바꿔서 넣는다.
  * 수신 스레드에서 호출되므로, 상태 변경과 화면 갱신은 모두 invokeLater로 EDT에 넘긴다.
+ *
+ * 게임이 끝나면 결과 창을 띄우고, 확인을 누르면 메인 화면으로 돌아간다. 입장이 거부되거나 연결이 끊겨도
+ * 메인 화면으로 돌아가 그 이유를 보여 준다.
  */
 final class GameSession implements ServerConnection.GameListener {
     private static final int ME = 0;
@@ -20,12 +25,15 @@ final class GameSession implements ServerConnection.GameListener {
 
     private final GameState view;
     private final GameFrame frame;
+    /** 메인 화면으로 돌아간다. 값은 메인 화면에 보여 줄 안내 문구다. */
+    private final Consumer<String> backToMain;
     /** 서버가 정한 내 플레이어 번호. WELCOME을 받기 전에는 -1. EDT에서만 읽고 쓴다. */
     private int myNumber = -1;
 
-    GameSession(GameState view, GameFrame frame) {
+    GameSession(GameState view, GameFrame frame, Consumer<String> backToMain) {
         this.view = view;
         this.frame = frame;
+        this.backToMain = backToMain;
     }
 
     @Override
@@ -51,6 +59,16 @@ final class GameSession implements ServerConnection.GameListener {
         SwingUtilities.invokeLater(() -> applyGameOver(parts));
     }
 
+    @Override
+    public void onJoinRejected(String message) {
+        SwingUtilities.invokeLater(() -> backToMain.accept(message));
+    }
+
+    @Override
+    public void onDisconnected(String message) {
+        SwingUtilities.invokeLater(() -> backToMain.accept(message));
+    }
+
     /** parts는 GAMEOVER 메시지를 나눈 것이다: [GAMEOVER, 승자번호, 사유, 점수0, 점수1] */
     private void applyGameOver(String[] parts) {
         int winner;
@@ -66,7 +84,7 @@ final class GameSession implements ServerConnection.GameListener {
         }
         String scores = " (내 점수 " + myScore + "점, 상대 점수 " + opponentScore + "점)";
         if (winner == Protocol.DRAW) {
-            frame.showGameOver("무승부", null, "시간이 끝났습니다. 점수가 같아 무승부입니다." + scores, true);
+            finish("무승부", null, "시간이 끝났습니다. 점수가 같아 무승부입니다.", scores, true);
             return;
         }
         boolean win = winner == myNumber;
@@ -77,7 +95,18 @@ final class GameSession implements ServerConnection.GameListener {
         } else {
             detail = win ? "시간이 끝났습니다. 점수가 더 높아 승리했습니다." : "시간이 끝났습니다. 점수가 낮아 패배했습니다.";
         }
-        frame.showGameOver(win ? "승리!" : "패배", win, detail + scores, !noMoves);
+        finish(win ? "승리!" : "패배", win, detail, scores, !noMoves);
+    }
+
+    /**
+     * 게임 화면에 결과를 표시하고 결과 창을 띄운다. 확인을 누르면 메인 화면으로 돌아가고,
+     * 메인 화면에도 지난 게임 결과를 한 줄로 남긴다.
+     */
+    private void finish(String headline, Boolean win, String detail, String scores, boolean timeUp) {
+        frame.showGameOver(headline, win, detail + scores, timeUp);
+        JOptionPane.showMessageDialog(frame, detail + "\n" + scores.trim() + "\n\n확인을 누르면 메인 화면으로 돌아갑니다.",
+                "게임 종료 - " + headline, JOptionPane.INFORMATION_MESSAGE);
+        backToMain.accept("지난 게임: " + headline + scores);
     }
 
     /** parts는 STATE 메시지를 나눈 것이다: [STATE, 점수0, 보드0, 블록들0, 점수1, 보드1, 블록들1] */
