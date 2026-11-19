@@ -7,6 +7,10 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Arrays;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 플레이어 두 명의 접속을 받고, 두 명이 모두 입장하면 게임을 시작시킨다.
@@ -17,26 +21,36 @@ import java.util.Arrays;
  *
  * 게임이 시작되면 GameRoom이 게임 상태의 원본을 갖는다. 클라이언트의 PLACE 요청을 판정하고,
  * 놓았으면 두 플레이어 모두에게 STATE를, 놓을 수 없으면 요청한 플레이어에게만 REJECT를 보낸다.
+ * 제한 시간이 끝나거나 한 플레이어가 더 놓을 블록이 없으면 두 플레이어 모두에게 GAMEOVER를 보낸다.
  */
 final class GameServer {
     private static final int MAX_NAME_LENGTH = 10;
 
     private final int port;
+    private final int timeLimitSeconds;
+    /** 제한 시간이 끝나면 timeUp()을 부르는 타이머 스레드. 창을 닫을 때 서버가 남지 않도록 데몬 스레드로 만든다. */
+    private final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "game-timer");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final ClientHandler[] players = new ClientHandler[GameConfig.PLAYER_COUNT];
     /** 자리별 플레이어 이름. 게임이 시작된 뒤에는 나간 사람의 이름도 남겨 두어 재접속을 알아본다. */
     private final String[] names = new String[GameConfig.PLAYER_COUNT];
     private boolean started;
     /** 게임이 시작된 동안만 있다. 둘 다 나가면 버린다. */
     private GameRoom room;
+    private ScheduledFuture<?> timeUpTask;
 
-    GameServer(int port) {
+    GameServer(int port, int timeLimitSeconds) {
         this.port = port;
+        this.timeLimitSeconds = timeLimitSeconds;
     }
 
     void run() throws IOException {
         // 나갔다가 다시 들어오는 접속을 받아야 하므로 서버가 꺼질 때까지 계속 받는다.
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("서버 시작: 포트 " + port);
+            System.out.println("서버 시작: 포트 " + port + ", 제한 시간 " + timeLimitSeconds + "초");
             for (int count = 1; ; count++) {
                 Socket socket = serverSocket.accept();
                 System.out.println("접속: " + socket.getRemoteSocketAddress());
@@ -70,19 +84,24 @@ final class GameServer {
         if (presentCount() < GameConfig.PLAYER_COUNT) {
             return true;
         }
-        String start = Protocol.encode(Protocol.START, names[0], names[1], GameConfig.TIME_LIMIT_SECONDS);
         if (!started) {
             started = true;
-            room = new GameRoom(names[0], names[1]);
+            room = new GameRoom(names[0], names[1], timeLimitSeconds);
+            GameRoom startedRoom = room;
+            timeUpTask = timer.schedule(() -> timeUp(startedRoom), timeLimitSeconds, TimeUnit.SECONDS);
+            String start = Protocol.encode(Protocol.START, names[0], names[1], timeLimitSeconds);
             String state = room.stateMessage();
             for (ClientHandler each : players) {
                 each.send(start);
                 each.send(state);
             }
         } else {
-            // 다시 들어온 플레이어는 진행 중이던 보드와 점수를 그대로 이어받는다.
-            player.send(start);
+            // 다시 들어온 플레이어는 진행 중이던 보드와 점수, 남은 시간을 그대로 이어받는다.
+            player.send(Protocol.encode(Protocol.START, names[0], names[1], room.remainingSeconds()));
             player.send(room.stateMessage());
+            if (room.isOver()) {
+                player.send(room.gameOverMessage());
+            }
             sendQuietly(players[otherSlot(slot)], Protocol.encode(Protocol.REJOIN, name));
             System.out.println((returning ? "재접속: " : "새 플레이어 입장: ") + name);
         }
@@ -106,6 +125,10 @@ final class GameServer {
             // 둘 다 나갔으면 처음 상태로 돌아가 새 게임을 받을 수 있게 한다.
             started = false;
             room = null;
+            if (timeUpTask != null) {
+                timeUpTask.cancel(false);
+                timeUpTask = null;
+            }
             Arrays.fill(names, null);
             return;
         }
@@ -139,7 +162,7 @@ final class GameServer {
      */
     synchronized void place(ClientHandler sender, String values) throws IOException {
         int slot = indexOf(sender);
-        if (slot < 0 || room == null) {
+        if (slot < 0 || room == null || room.isOver()) {
             sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_NOT_PLAYING));
             return;
         }
@@ -155,6 +178,30 @@ final class GameServer {
         String state = room.stateMessage();
         for (ClientHandler each : players) {
             sendQuietly(each, state);
+        }
+        // 놓은 뒤 남은 블록을 하나도 놓을 수 없으면 GameRoom이 게임을 끝낸다.
+        if (room.isOver()) {
+            endGame();
+        }
+    }
+
+    /** 타이머 스레드에서 부른다. 그 사이 게임이 바뀌었거나 이미 끝났으면 아무것도 하지 않는다. */
+    private synchronized void timeUp(GameRoom expired) {
+        if (room == expired && expired.timeUp()) {
+            endGame();
+        }
+    }
+
+    /** 게임 결과를 자리에 있는 모두에게 알리고 타이머를 멈춘다. 게임이 끝난 뒤에도 채팅은 할 수 있다. */
+    private void endGame() {
+        String gameOver = room.gameOverMessage();
+        System.out.println("게임 종료: " + gameOver);
+        for (ClientHandler each : players) {
+            sendQuietly(each, gameOver);
+        }
+        if (timeUpTask != null) {
+            timeUpTask.cancel(false);
+            timeUpTask = null;
         }
     }
 
