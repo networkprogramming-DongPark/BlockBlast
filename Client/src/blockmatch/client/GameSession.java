@@ -5,7 +5,6 @@ import blockmatch.common.GameConfig;
 import blockmatch.common.GameState;
 import blockmatch.common.Protocol;
 
-import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import java.util.function.Consumer;
 
@@ -60,6 +59,16 @@ final class GameSession implements ServerConnection.GameListener {
     }
 
     @Override
+    public void onChat(String name, String text) {
+        SwingUtilities.invokeLater(() -> frame.showChat(name, text));
+    }
+
+    @Override
+    public void onOpponentPresence(String name, boolean present) {
+        SwingUtilities.invokeLater(() -> frame.showOpponentPresence(name, present));
+    }
+
+    @Override
     public void onJoinRejected(String message) {
         SwingUtilities.invokeLater(() -> backToMain.accept(message));
     }
@@ -104,8 +113,7 @@ final class GameSession implements ServerConnection.GameListener {
      */
     private void finish(String headline, Boolean win, String detail, String scores, boolean timeUp) {
         frame.showGameOver(headline, win, detail + scores, timeUp);
-        JOptionPane.showMessageDialog(frame, detail + "\n" + scores.trim() + "\n\n확인을 누르면 메인 화면으로 돌아갑니다.",
-                "게임 종료 - " + headline, JOptionPane.INFORMATION_MESSAGE);
+        frame.showResultDialog(headline, win, detail + "\n" + scores.trim() + "\n확인을 누르면 메인 화면으로 돌아갑니다.");
         backToMain.accept("지난 게임: " + headline + scores);
     }
 

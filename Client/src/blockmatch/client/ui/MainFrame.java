@@ -1,10 +1,10 @@
 package blockmatch.client.ui;
 
+import blockmatch.common.BlockShape;
 import blockmatch.common.GameConfig;
 import blockmatch.common.Protocol;
 
 import javax.swing.BorderFactory;
-import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -13,6 +13,8 @@ import javax.swing.SwingConstants;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -22,18 +24,15 @@ import java.awt.Insets;
  * 게임이 끝나거나 접속에 실패하면 이 화면으로 돌아오고, 그 이유를 아래쪽 안내 줄에 표시한다.
  */
 public final class MainFrame extends JFrame {
-    private static final Color TITLE = new Color(0x1F2D5A);
-    private static final Color HINT = new Color(0x6B7280);
-    private static final Color ERROR = new Color(0xC62828);
     /** 안내 문구가 이 폭(px)을 넘으면 다음 줄로 넘긴다. */
-    private static final int STATUS_WIDTH = 340;
+    private static final int STATUS_WIDTH = 270;
 
     /** "게임 시작"을 눌렀을 때 쓸 수 있는 닉네임을 받아 게임을 시작한다. */
     public interface StartListener {
         void start(String nickname);
     }
 
-    private final JTextField nickname = new JTextField(14);
+    private final JTextField nickname = new RoundTextField(16);
     private final JLabel status = new JLabel(" ", SwingConstants.CENTER);
     private final StartListener listener;
 
@@ -42,42 +41,55 @@ public final class MainFrame extends JFrame {
         this.listener = listener;
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        JLabel title = label("BlockBlast Duo", Font.BOLD, 46f, TITLE);
-        JLabel subtitle = label("1:1 실시간 블록 대전", Font.PLAIN, 15f, HINT);
-        JLabel nicknameLabel = label("닉네임", Font.BOLD, 15f, null);
-        JLabel hint = label("1~" + GameConfig.NICKNAME_MAX_LENGTH + "자, '|'는 쓸 수 없습니다", Font.PLAIN, 12f, HINT);
+        JLabel title = label("BlockBlast Duo", Font.BOLD, 50f, Theme.TEXT);
+        JLabel subtitle = label("1:1 실시간 대전", Font.PLAIN, 16f, Theme.MUTED);
+        JLabel nicknameLabel = label("닉네임", Font.BOLD, 15f, Theme.TEXT);
+        JLabel hint = label("1~" + GameConfig.NICKNAME_MAX_LENGTH + "자, '|'는 쓸 수 없습니다", Font.PLAIN, 12f, Theme.MUTED);
 
         nickname.setText(initialNickname == null ? "" : initialNickname);
-        nickname.setFont(nickname.getFont().deriveFont(16f));
+        nickname.setFont(Theme.font(Font.PLAIN, 17f));
         nickname.setHorizontalAlignment(SwingConstants.CENTER);
         nickname.addActionListener(event -> tryStart()); // Enter로도 시작한다.
 
-        JButton startButton = new JButton("게임 시작");
-        startButton.setFont(startButton.getFont().deriveFont(Font.BOLD, 16f));
-        startButton.setPreferredSize(new Dimension(220, 44));
+        RoundButton startButton = new RoundButton("게임 시작", true).withSize(260, 50);
+        startButton.setFont(Theme.font(Font.BOLD, 17f));
         startButton.addActionListener(event -> tryStart());
 
-        status.setFont(status.getFont().deriveFont(13f));
-        showStatus(" ", false);
+        status.setFont(Theme.font(Font.PLAIN, 13f));
 
-        JPanel content = new JPanel(new GridBagLayout());
-        content.setBorder(BorderFactory.createEmptyBorder(40, 60, 40, 60));
+        JPanel card = new JPanel(new GridBagLayout()) {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D g = Theme.smooth(graphics);
+                Theme.paintCard(g, getWidth(), getHeight(), 36, Theme.CARD, Theme.CARD_BORDER);
+                g.dispose();
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(BorderFactory.createEmptyBorder(28, 48, 24, 48));
         GridBagConstraints c = new GridBagConstraints();
         c.gridx = 0;
-        c.insets = new Insets(4, 0, 4, 0);
-        content.add(title, c);
-        c.insets = new Insets(0, 0, 36, 0);
-        content.add(subtitle, c);
-        c.insets = new Insets(4, 0, 4, 0);
-        content.add(nicknameLabel, c);
-        content.add(nickname, c);
-        content.add(hint, c);
-        c.insets = new Insets(24, 0, 8, 0);
-        content.add(startButton, c);
-        c.insets = new Insets(4, 0, 4, 0);
-        content.add(status, c);
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.insets = new Insets(0, 0, 8, 0);
+        card.add(nicknameLabel, c);
+        card.add(nickname, c);
+        card.add(hint, c);
+        c.insets = new Insets(10, 0, 12, 0);
+        card.add(startButton, c);
+        c.insets = new Insets(0, 0, 0, 0);
+        card.add(status, c);
+
+        JPanel content = new Backdrop();
+        GridBagConstraints row = new GridBagConstraints();
+        row.gridx = 0;
+        content.add(title, row);
+        row.insets = new Insets(4, 0, 34, 0);
+        content.add(subtitle, row);
+        row.insets = new Insets(0, 0, 0, 0);
+        content.add(card, row);
 
         setContentPane(content);
+        showStatus(" ", false);
         pack();
         setMinimumSize(getSize());
         setLocationRelativeTo(null);
@@ -109,20 +121,54 @@ public final class MainFrame extends JFrame {
         }
     }
 
-    /** 안내 문구를 표시한다. 접속 실패 이유처럼 긴 문구는 여러 줄로 나누고, 창 높이를 그만큼 늘린다. */
+    /** 안내 문구를 표시한다. 접속 실패 이유처럼 긴 문구는 여러 줄로 나뉜다. */
     private void showStatus(String text, boolean error) {
         String escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         status.setText("<html><div style='text-align:center; width:" + STATUS_WIDTH + "px'>" + escaped + "</div></html>");
-        status.setForeground(error ? ERROR : HINT);
-        pack();
+        status.setForeground(error ? Theme.RED : Theme.MUTED);
+        revalidate();
     }
 
     private static JLabel label(String text, int style, float size, Color color) {
         JLabel label = new JLabel(text, SwingConstants.CENTER);
-        label.setFont(label.getFont().deriveFont(style, size));
-        if (color != null) {
-            label.setForeground(color);
-        }
+        label.setFont(Theme.font(style, size));
+        label.setForeground(color);
         return label;
+    }
+
+    /** 가장자리에 블록을 흩어 놓은 바탕. */
+    private static final class Backdrop extends JPanel {
+        private static final int CELL = 38;
+
+        Backdrop() {
+            super(new GridBagLayout());
+            setBackground(Theme.BACKGROUND);
+            setPreferredSize(new Dimension(920, 600));
+        }
+
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            Graphics2D g = Theme.smooth(graphics);
+            int right = getWidth();
+            int bottom = getHeight();
+            paintShape(g, BlockShape.L, 48, 56);
+            paintShape(g, BlockShape.SQUARE2, 64, bottom / 2 - 10);
+            paintShape(g, BlockShape.T, 40, bottom - 132);
+            paintShape(g, BlockShape.S, right - 40 - CELL * 3, 60);
+            paintShape(g, BlockShape.LINE3_V, right - 72 - CELL, bottom / 2 - 50);
+            paintShape(g, BlockShape.LINE4_H, right - 40 - CELL * 4, bottom - 92);
+            g.dispose();
+        }
+
+        private static void paintShape(Graphics2D g, BlockShape shape, int x, int y) {
+            for (int r = 0; r < shape.getHeight(); r++) {
+                for (int c = 0; c < shape.getWidth(); c++) {
+                    if (shape.isFilled(r, c)) {
+                        Theme.paintBlockCell(g, x + c * CELL, y + r * CELL, CELL - 3, Theme.blockColor(shape.getColorId()));
+                    }
+                }
+            }
+        }
     }
 }

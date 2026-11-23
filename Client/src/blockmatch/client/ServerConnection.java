@@ -30,6 +30,12 @@ final class ServerConnection {
         /** parts는 GAMEOVER 메시지를 "|"로 나눈 것이다. */
         void onGameOver(String[] parts);
 
+        /** 채팅을 받았다. 내가 보낸 채팅도 서버가 다시 보내 준다. */
+        void onChat(String name, String text);
+
+        /** 게임 중에 상대가 나갔거나(false), 나간 자리에 다시 들어왔다(true). */
+        void onOpponentPresence(String name, boolean present);
+
         /** 닉네임이 거부되었거나 방이 가득 차서 들어가지 못했다. message는 사용자에게 보여 줄 이유다. */
         void onJoinRejected(String message);
 
@@ -149,16 +155,24 @@ final class ServerConnection {
             }
             case Protocol.STATE -> game.onState(parts);
             case Protocol.GAMEOVER -> game.onGameOver(parts);
-            case Protocol.LEAVE -> listener.accept("상대 " + parts[1] + "님이 접속을 종료했습니다.");
+            case Protocol.LEAVE -> {
+                game.onOpponentPresence(parts[1], false);
+                listener.accept("상대 " + parts[1] + "님이 접속을 종료했습니다.");
+            }
             case Protocol.REJOIN -> {
                 boolean returning = parts[1].equals(opponentName);
                 opponentName = parts[1];
+                game.onOpponentPresence(parts[1], true);
                 listener.accept("상대 " + parts[1] + (returning ? "님이 재접속했습니다." : "님이 접속했습니다."));
             }
             // 채팅 내용에는 "|"가 들어갈 수 있으므로 이름과 내용 두 값까지만 나눈다.
             case Protocol.CHAT -> {
                 String[] chat = Protocol.decode(line, 3);
-                listener.accept(chat.length >= 3 ? chat[1] + ": " + chat[2] : "알 수 없는 메시지: " + line);
+                if (chat.length >= 3) {
+                    game.onChat(chat[1], chat[2]);
+                } else {
+                    listener.accept("알 수 없는 메시지: " + line);
+                }
             }
             case Protocol.REJECT -> {
                 String reason = parts.length >= 2 ? parts[1] : "";
