@@ -141,12 +141,13 @@ final class BlockDragHandler extends MouseAdapter {
             Graphics2D g = (Graphics2D) graphics.create();
             g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.85f));
             int cell = board.cellSize();
+            int gap = BoardPanel.gap(cell);
             int left = (int) Math.round(mouse.x - grabX * cell);
             int top = (int) Math.round(mouse.y - grabY * cell);
             for (int r = 0; r < shape.getHeight(); r++) {
                 for (int c = 0; c < shape.getWidth(); c++) {
                     if (shape.isFilled(r, c)) {
-                        Theme.paintBlockCell(g, left + c * cell, top + r * cell, cell - 1,
+                        Theme.paintBlockCell(g, left + c * cell + gap / 2, top + r * cell + gap / 2, Math.max(1, cell - gap),
                                 Theme.blockColor(shape.getColorId()));
                     }
                 }

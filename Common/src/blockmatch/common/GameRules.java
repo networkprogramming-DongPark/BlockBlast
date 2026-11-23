@@ -120,6 +120,14 @@ public final class GameRules {
         return false;
     }
 
+    /**
+     * 한 번의 배치로 얻은 점수에서 지운 줄 수를 구한다. 블록은 9칸 이하라 배치 점수가 한 줄 점수(100점)보다 작으므로
+     * 점수만 보고도 줄 수가 하나로 정해진다.
+     */
+    public static int clearedLines(int gained) {
+        return (int) Math.sqrt(gained / POINTS_PER_LINE);
+    }
+
     public static int score(int placedCells, int clearedLines) {
         return placedCells * POINTS_PER_CELL + clearedLines * POINTS_PER_LINE * clearedLines;
     }

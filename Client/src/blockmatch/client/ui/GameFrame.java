@@ -1,51 +1,37 @@
 package blockmatch.client.ui;
 
+import blockmatch.common.GameRules;
 import blockmatch.common.GameState;
 import blockmatch.common.PlayerState;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
-import javax.swing.SwingConstants;
 import java.awt.BorderLayout;
-import java.awt.Component;
+import java.awt.Color;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
 import java.awt.GridLayout;
-import java.awt.Insets;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.function.Predicate;
 
 /**
- * 게임 메인 창. 내 보드와 상대 보드를 나란히 두고, 각 보드 위에 플레이어 정보를 표시한다.
- * 블록 트레이는 두 보드 아래에 각각 둔다. 채팅은 오른쪽 아래 버튼으로 열고 닫는 패널이다.
+ * 게임 창. 왼쪽에 내 화면, 오른쪽에 상대 화면을 나란히 두고 가운데에 남은 시간과 버튼을 둔다.
+ * 두 화면 모두 플레이어 정보, 보드, 블록 트레이를 보여 준다. 채팅은 가운데 아래의 버튼으로 열고 닫는 패널이다.
  * 창 크기는 바뀌지 않고, 채팅을 열면 그 폭만큼 게임 화면이 줄어들어 가려지는 곳 없이 모두 보인다.
  * 내 트레이의 블록을 끌어 내 보드에 놓을 수 있다. 놓는 요청은 서버로 보내고, 서버가 보낸 상태로 두 보드를 다시 그린다.
  */
 public final class GameFrame extends JFrame {
-    private static final int MY_COLUMN = 0;
-    private static final int CENTER_COLUMN = 1;
-    private static final int OPPONENT_COLUMN = 2;
-    private static final int INFO_ROW = 0;
-    private static final int CAPTION_ROW = 1;
-    private static final int BOARD_ROW = 2;
-    private static final int TRAY_ROW = 3;
     /** 화면용 GameState에서는 0번이 항상 나, 1번이 상대다. 서버 번호와의 변환은 GameSession이 한다. */
     private static final int MY_PLAYER = 0;
     private static final int OPPONENT_PLAYER = 1;
 
-    private static final int ROOT_GAP = 10;
+    private static final int MARGIN = 24;
+    private static final Color MY_AVATAR = new Color(0x7F9AE8);
+    private static final Color OPPONENT_AVATAR = new Color(0xE59AA6);
 
-    /** 이모티콘 (웃음, 화남, 슬픔, 지루함). 소스 인코딩에 영향받지 않도록 유니코드 코드로 적었다. */
-    private static final String[] EMOTICONS = {"😊", "😠", "😢", "😑"};
-    private static final String[] EMOTICON_NAMES = {"웃음", "화남", "슬픔", "지루함"};
     /** 자주 쓰는 문구. 누르면 바로 채팅으로 보낸다. */
     private static final String[] QUICK_PHRASES = {"블록을 빨리 놔주세요", "잘하시네요!", "잠깐만 기다려 주세요"};
 
@@ -63,14 +49,19 @@ public final class GameFrame extends JFrame {
     private final BoardPanel opponentBoard;
     private final BlockTrayPanel myTray;
     private final BlockTrayPanel opponentTray;
+    private final PlayerColumn opponentColumn;
+    private final IconButton emoticonButton = new IconButton(IconButton.Kind.EMOTICON, "이모티콘과 빠른 문구");
+    private final IconButton chatButton = new IconButton(IconButton.Kind.CHAT, "채팅 열기/닫기");
+    private final IconButton exitButton = new IconButton(IconButton.Kind.EXIT, "메인 화면으로 나가기");
+    private final MatchStatusPanel status = new MatchStatusPanel(emoticonButton, chatButton, exitButton);
     private PlaceSender placeSender = (handIndex, row, col) -> false;
-    private final MatchStatusPanel status = new MatchStatusPanel();
+    /** START를 받은 뒤부터 GAMEOVER를 받기 전까지 true. */
+    private boolean playing;
     /** GAMEOVER를 받은 뒤에는 블록을 놓지 않는다. */
     private boolean gameOver;
-    /** 내가 보낸 채팅은 "이름: 내용"으로 돌아온다. 닫힌 동안 내가 보낸 것은 안 읽은 메시지로 세지 않는다. */
-    private final String myChatPrefix;
-    private final JButton chatToggle = new JButton();
-    /** 채팅창이 닫힌 동안 도착한 메시지 수. 다시 열면 0으로 돌아간다. */
+    /** 바로 전 상태의 내 점수. START 뒤 첫 상태를 받기 전에는 -1이며, 이때는 점수 변화를 보여 주지 않는다. */
+    private int previousScore = -1;
+    /** 채팅창이 닫힌 동안 도착한 상대 채팅 수. 다시 열면 0으로 돌아간다. */
     private int unreadCount;
     /** 창의 닫기 버튼을 눌렀을 때 할 일. ClientApp이 메인 화면으로 돌아가도록 연결한다. */
     private Runnable onClose = () -> { };
@@ -88,70 +79,70 @@ public final class GameFrame extends JFrame {
 
         me = state.getPlayer(MY_PLAYER);
         opponent = state.getPlayer(OPPONENT_PLAYER);
-        myChatPrefix = me.getName() + ": ";
-        myInfo = new PlayerInfoPanel(me.getName() + " · 나");
-        opponentInfo = new PlayerInfoPanel(opponent.getName());
+        myInfo = new PlayerInfoPanel(me.getName(), true, MY_AVATAR);
+        opponentInfo = new PlayerInfoPanel(opponent.getName(), false, OPPONENT_AVATAR);
         myBoard = new BoardPanel(me.getBoard());
         opponentBoard = new BoardPanel(opponent.getBoard());
-        myTray = new BlockTrayPanel(me);
-        opponentTray = new BlockTrayPanel(opponent);
+        myTray = new BlockTrayPanel(me, true);
+        opponentTray = new BlockTrayPanel(opponent, false);
 
-        // 플레이어 정보와 보드의 열을 맞추기 위해 한 격자에 함께 배치한다.
-        JPanel playArea = new JPanel(new GridBagLayout());
-        place(playArea, myInfo, MY_COLUMN, INFO_ROW);
-        place(playArea, centerLabel("블록 매치", 20f), CENTER_COLUMN, INFO_ROW);
-        place(playArea, opponentInfo, OPPONENT_COLUMN, INFO_ROW);
-        place(playArea, new JLabel("내 보드"), MY_COLUMN, CAPTION_ROW);
-        place(playArea, new JLabel("상대 보드"), OPPONENT_COLUMN, CAPTION_ROW);
-        place(playArea, myBoard, MY_COLUMN, BOARD_ROW);
-        place(playArea, status, CENTER_COLUMN, BOARD_ROW);
-        place(playArea, opponentBoard, OPPONENT_COLUMN, BOARD_ROW);
-        place(playArea, myTray, MY_COLUMN, TRAY_ROW);
-        place(playArea, opponentTray, OPPONENT_COLUMN, TRAY_ROW);
+        PlayerColumn myColumn = new PlayerColumn(myInfo, "내 보드", Theme.TEXT, myBoard, myTray);
+        myColumn.setStatus("블록을 끌어 놓으세요", Theme.MUTED);
+        opponentColumn = new PlayerColumn(opponentInfo, "상대 보드", Theme.MUTED, opponentBoard, opponentTray);
+        opponentColumn.setStatus("대기 중", Theme.MUTED);
 
-        // 채팅 열기/닫기 버튼은 채팅창이 닫혀도 보이도록 창 오른쪽 아래에 따로 둔다.
-        chatToggle.setFocusable(false);
-        chatToggle.addActionListener(event -> toggleChat());
-        updateChatToggleText();
-        // 이모티콘 버튼은 채팅 열기/닫기 버튼 왼쪽에 둔다. 누르면 버튼 위로 팝업이 열린다.
-        JButton emoticonButton = new JButton("이모티콘");
-        emoticonButton.setFocusable(false);
+        chatButton.addActionListener(event -> toggleChat());
+        exitButton.addActionListener(event -> confirmExit());
         JPopupMenu emoticonMenu = createEmoticonMenu();
         emoticonButton.addActionListener(event -> {
-            // 창 밖으로 나가지 않도록 팝업의 오른쪽 끝을 채팅 버튼의 오른쪽 끝에 맞춘다.
+            // 버튼 세 개의 가운데(채팅 버튼)에 맞춰 버튼 위쪽에 연다.
             Dimension size = emoticonMenu.getPreferredSize();
-            int right = chatToggle.getX() + chatToggle.getWidth();
-            emoticonMenu.show(emoticonButton, right - emoticonButton.getX() - size.width, -size.height);
+            int center = chatButton.getX() - emoticonButton.getX() + chatButton.getWidth() / 2;
+            emoticonMenu.show(emoticonButton, center - size.width / 2, -size.height - 8);
         });
 
-        JPanel bottomBar = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
-        bottomBar.add(emoticonButton);
-        bottomBar.add(chatToggle);
-
-        JPanel root = new JPanel(new BorderLayout(ROOT_GAP, ROOT_GAP));
-        root.setBorder(BorderFactory.createEmptyBorder(ROOT_GAP, ROOT_GAP, ROOT_GAP, ROOT_GAP));
-        root.add(playArea, BorderLayout.CENTER);
+        JPanel root = new JPanel(new BorderLayout(MARGIN, 0));
+        root.setBackground(Theme.BACKGROUND);
+        root.setBorder(BorderFactory.createEmptyBorder(MARGIN, MARGIN, MARGIN, MARGIN));
+        root.add(new PlayArea(myColumn, status, opponentColumn), BorderLayout.CENTER);
         root.add(chatPanel, BorderLayout.EAST);
-        root.add(bottomBar, BorderLayout.SOUTH);
-
         setContentPane(root);
         new BlockDragHandler(this, me, myTray, myBoard, this::requestPlace);
 
-        // 창 크기는 채팅창 없이 게임 화면만으로 정하고, 그 뒤에 채팅창을 연다. 그러면 창 크기는 그대로이고
-        // 채팅창이 차지하는 폭만큼 게임 화면이 줄어들어 가려지는 곳 없이 모두 보인다.
+        // 창 크기는 채팅창 없이 게임 화면만으로 정한다. 채팅창은 닫힌 채로 시작한다.
         chatPanel.setVisible(false);
         pack();
         setMinimumSize(getSize());
-        chatPanel.setVisible(true);
-        updateChatToggleText();
     }
 
-    /** 서버 접속 상태 등을 채팅 영역에 표시한다. EDT에서 호출해야 한다. */
+    /** 서버 접속 상태 같은 안내 문구를 채팅 영역에 남긴다. EDT에서 호출해야 한다. */
     public void showMessage(String message) {
-        chatPanel.appendMessage(message);
-        if (!chatPanel.isVisible() && !message.startsWith(myChatPrefix)) {
+        chatPanel.appendNotice(message);
+    }
+
+    /** 받은 채팅을 표시한다. 이모티콘이면 보낸 사람의 점수 옆에도 잠시 보여 준다. EDT에서 호출해야 한다. */
+    public void showChat(String name, String text) {
+        boolean mine = name.equals(me.getName());
+        chatPanel.appendChat(name, text, mine);
+        Emoticon emoticon = Emoticon.of(text);
+        if (emoticon != null) {
+            (mine ? myInfo : opponentInfo).showEmoticon(emoticon);
+        }
+        if (!chatPanel.isVisible() && !mine) {
             unreadCount++;
-            updateChatToggleText();
+            chatButton.setBadge(unreadCount);
+        }
+    }
+
+    /** 상대가 나갔거나 다시 들어왔음을 표시한다. EDT에서 호출해야 한다. */
+    public void showOpponentPresence(String name, boolean present) {
+        opponentInfo.setNickname(name, false);
+        if (present) {
+            opponentColumn.setStatus("● 플레이 중", Theme.GREEN);
+            status.showNotice(name + "님이 들어왔어요");
+        } else {
+            opponentColumn.setStatus("접속 종료", Theme.RED);
+            status.showNotice(name + "님이 나갔어요");
         }
     }
 
@@ -165,15 +156,23 @@ public final class GameFrame extends JFrame {
         placeSender = sender;
     }
 
+    /** 입력한 채팅을 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */
+    public void setChatSender(Predicate<String> sender) {
+        chatPanel.setSender(sender);
+    }
+
     /** START로 받은 두 플레이어의 닉네임을 표시한다. EDT에서 호출해야 한다. */
     public void setPlayerNames(String myName, String opponentName) {
-        myInfo.setNickname(myName + " · 나");
-        opponentInfo.setNickname(opponentName);
+        myInfo.setNickname(myName, true);
+        opponentInfo.setNickname(opponentName, false);
     }
 
     /** START를 받으면 남은 시간 표시를 시작한다. 다시 들어온 경우에는 남은 시간부터 센다. EDT에서 호출해야 한다. */
     public void startTimer(int seconds) {
+        playing = true;
         gameOver = false;
+        previousScore = -1;
+        opponentColumn.setStatus("● 플레이 중", Theme.GREEN);
         status.startCountdown(seconds);
     }
 
@@ -185,14 +184,28 @@ public final class GameFrame extends JFrame {
      * @param timeUp 제한 시간이 끝나서 끝났으면 true
      */
     public void showGameOver(String headline, Boolean win, String detail, boolean timeUp) {
+        playing = false;
         gameOver = true;
+        opponentColumn.setStatus("게임 종료", Theme.MUTED);
         status.showResult(headline, win, timeUp);
         showMessage(detail);
     }
 
+    /** 결과 창을 띄우고 닫힐 때까지 기다린다. EDT에서 호출해야 한다. */
+    public void showResultDialog(String headline, Boolean win, String body) {
+        Color color = win == null ? Theme.MUTED : win ? Theme.GREEN : Theme.RED;
+        GameDialog.show(this, "게임 종료 - " + headline, headline, color, body, "확인");
+    }
+
     /** GameState가 바뀐 뒤 두 플레이어의 점수, 보드, 트레이를 다시 그린다. EDT에서 호출해야 한다. */
     public void refresh() {
-        myInfo.setScore(me.getScore());
+        int score = me.getScore();
+        if (previousScore >= 0 && score > previousScore) {
+            int gained = score - previousScore;
+            status.showGain(gained, GameRules.clearedLines(gained));
+        }
+        previousScore = score;
+        myInfo.setScore(score);
         opponentInfo.setScore(opponent.getScore());
         myBoard.repaint();
         opponentBoard.repaint();
@@ -209,12 +222,16 @@ public final class GameFrame extends JFrame {
             return true;
         }
         showMessage("서버에 연결되어 있지 않아 블록을 놓을 수 없습니다.");
+        status.showNotice("서버에 연결되어 있지 않아요");
         return false;
     }
 
-    /** 입력한 채팅을 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */
-    public void setChatSender(Predicate<String> sender) {
-        chatPanel.setSender(sender);
+    /** 게임 중에는 실수로 나가지 않도록 한 번 더 묻는다. */
+    private void confirmExit() {
+        if (!playing || GameDialog.ask(this, "나가기", "게임에서 나갈까요?",
+                "진행 중인 게임을 두고 메인 화면으로 돌아갑니다.", "나가기", "계속하기")) {
+            onClose.run();
+        }
     }
 
     /**
@@ -223,11 +240,11 @@ public final class GameFrame extends JFrame {
     private void toggleChat() {
         boolean show = !chatPanel.isVisible();
         chatPanel.setVisible(show);
+        chatButton.setActive(show);
+        revalidate();
         if (show) {
             unreadCount = 0;
-        }
-        updateChatToggleText();
-        if (show) {
+            chatButton.setBadge(0);
             chatPanel.focusInput();
         }
     }
@@ -235,58 +252,41 @@ public final class GameFrame extends JFrame {
     /** 위쪽에 이모티콘 버튼 4개, 아래쪽에 빠른 문구 버튼 3개를 둔 팝업. 누르면 바로 채팅으로 보내고 닫힌다. */
     private JPopupMenu createEmoticonMenu() {
         JPopupMenu menu = new JPopupMenu();
+        menu.setBackground(Theme.CARD);
+        menu.setBorder(BorderFactory.createLineBorder(Theme.CARD_BORDER));
 
-        JPanel faces = new JPanel(new GridLayout(1, EMOTICONS.length, 6, 0));
-        for (int i = 0; i < EMOTICONS.length; i++) {
-            JButton button = quickButton(menu, EMOTICONS[i]);
-            button.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 24));
-            button.setToolTipText(EMOTICON_NAMES[i]);
+        JPanel faces = new JPanel(new GridLayout(1, 0, 6, 0));
+        faces.setOpaque(false);
+        for (Emoticon emoticon : Emoticon.values()) {
+            JButton button = quickButton(menu, emoticon.text(), "");
+            button.setIcon(emoticon.icon(28));
+            button.setToolTipText(emoticon.label());
+            button.getAccessibleContext().setAccessibleName(emoticon.label());
             faces.add(button);
         }
 
-        JPanel content = new JPanel(new GridLayout(0, 1, 0, 6));
-        content.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        content.add(faces);
+        JPanel phrases = new JPanel(new GridLayout(0, 1, 0, 6));
+        phrases.setOpaque(false);
         for (String phrase : QUICK_PHRASES) {
-            content.add(quickButton(menu, phrase));
+            phrases.add(quickButton(menu, phrase, phrase));
         }
+
+        JPanel content = new JPanel(new BorderLayout(0, 8));
+        content.setOpaque(false);
+        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.add(faces, BorderLayout.NORTH);
+        content.add(phrases, BorderLayout.CENTER);
         menu.add(content);
         return menu;
     }
 
-    private JButton quickButton(JPopupMenu menu, String text) {
-        JButton button = new JButton(text);
+    private JButton quickButton(JPopupMenu menu, String message, String label) {
+        RoundButton button = new RoundButton(label, false);
         button.setFocusable(false);
         button.addActionListener(event -> {
             menu.setVisible(false);
-            chatPanel.send(text);
+            chatPanel.send(message);
         });
         return button;
-    }
-
-    private void updateChatToggleText() {
-        if (chatPanel.isVisible()) {
-            chatToggle.setText("채팅 닫기");
-        } else {
-            chatToggle.setText(unreadCount > 0 ? "채팅 열기 (" + unreadCount + ")" : "채팅 열기");
-        }
-    }
-
-    private static void place(JPanel grid, Component component, int column, int row) {
-        boolean center = column == CENTER_COLUMN;
-        GridBagConstraints constraints = new GridBagConstraints();
-        constraints.gridx = column;
-        constraints.gridy = row;
-        constraints.fill = GridBagConstraints.BOTH;
-        constraints.weightx = center ? 0 : 1;
-        constraints.weighty = row == BOARD_ROW ? 1 : 0;
-        constraints.insets = new Insets(4, center ? 24 : 0, 4, center ? 24 : 0);
-        grid.add(component, constraints);
-    }
-
-    private static JLabel centerLabel(String text, float fontSize) {
-        JLabel label = new JLabel(text, SwingConstants.CENTER);
-        label.setFont(label.getFont().deriveFont(Font.BOLD, fontSize));
-        return label;
     }
 }
