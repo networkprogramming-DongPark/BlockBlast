@@ -58,6 +58,11 @@ final class GameSession implements ServerConnection.GameListener {
     }
 
     @Override
+    public void onPlaced(String[] parts) {
+        SwingUtilities.invokeLater(() -> applyPlaced(parts));
+    }
+
+    @Override
     public void onGameOver(String[] parts) {
         SwingUtilities.invokeLater(() -> applyGameOver(parts));
     }
@@ -128,6 +133,19 @@ final class GameSession implements ServerConnection.GameListener {
         String result = "지난 게임: " + headline + scores;
         frame.showResultDialog(headline, win, detail + "\n" + scores.trim(), opponentPresent,
                 () -> backToMain.accept(result));
+    }
+
+    /** 놓은 플레이어의 보드에 효과를 보여 준다. 게임 상태는 뒤이어 오는 STATE가 바꾼다. */
+    private void applyPlaced(String[] parts) {
+        if (myNumber < 0) {
+            return;
+        }
+        try {
+            Protocol.Placed placed = Protocol.readPlaced(parts);
+            frame.showPlaced(placed.player() == myNumber ? ME : OPPONENT, placed.combo(), placed.result());
+        } catch (IllegalArgumentException e) {
+            frame.showMessage("잘못된 배치 결과 메시지를 받았습니다: " + e.getMessage());
+        }
     }
 
     /** parts는 STATE 메시지를 나눈 것이다: [STATE, 점수0, 보드0, 블록들0, 점수1, 보드1, 블록들1] */
