@@ -39,6 +39,9 @@ final class ServerConnection {
         /** 게임 중에 상대가 나갔거나(false), 나간 자리에 다시 들어왔다(true). */
         void onOpponentPresence(String name, boolean present);
 
+        /** 게임이 끝난 뒤 name의 플레이어가 "다시 게임하기"를 눌렀다. 내가 누른 경우에도 서버가 알려 준다. */
+        void onRematchRequest(String name);
+
         /** 닉네임이 거부되었거나 방이 가득 차서 들어가지 못했다. message는 사용자에게 보여 줄 이유다. */
         void onJoinRejected(String message);
 
@@ -159,6 +162,11 @@ final class ServerConnection {
             case Protocol.STATE -> game.onState(parts);
             case Protocol.PLACED -> game.onPlaced(parts);
             case Protocol.GAMEOVER -> game.onGameOver(parts);
+            case Protocol.REMATCH -> {
+                if (parts.length >= 2) {
+                    game.onRematchRequest(parts[1]);
+                }
+            }
             case Protocol.LEAVE -> {
                 game.onOpponentPresence(parts[1], false);
                 listener.accept("상대 " + parts[1] + "님이 접속을 종료했습니다.");

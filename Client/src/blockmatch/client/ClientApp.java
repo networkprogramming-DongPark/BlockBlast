@@ -45,6 +45,7 @@ final class ClientApp {
                 new GameSession(state, frame, backToMain));
         frame.setChatSender(text -> newConnection.send(Protocol.CHAT, text));
         frame.setPlaceSender((handIndex, row, col) -> newConnection.send(Protocol.PLACE, handIndex, row, col));
+        frame.setRematchSender(() -> newConnection.send(Protocol.REMATCH));
         frame.setOnClose(() -> returnToMain(frame, null));
 
         gameFrame = frame;

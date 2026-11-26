@@ -13,7 +13,7 @@ import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 
-/** 게임 화면과 같은 모양의 알림 창. 닫을 때까지 게임 창을 조작할 수 없다. */
+/** 게임 화면과 같은 모양의 확인 창. 닫을 때까지 게임 창을 조작할 수 없다. 게임 결과 창은 ResultDialog다. */
 final class GameDialog extends JDialog {
     private boolean confirmed;
 
@@ -55,11 +55,6 @@ final class GameDialog extends JDialog {
         setResizable(false);
         pack();
         setLocationRelativeTo(owner);
-    }
-
-    /** 내용을 보여 주고 닫힐 때까지 기다린다. */
-    static void show(JFrame owner, String title, String headline, Color headlineColor, String body, String confirm) {
-        new GameDialog(owner, title, headline, headlineColor, body, confirm, null).setVisible(true);
     }
 
     /** @return 확인을 눌렀으면 true, 취소하거나 창을 닫았으면 false */

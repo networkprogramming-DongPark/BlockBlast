@@ -16,6 +16,7 @@ import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 /**
@@ -56,6 +57,10 @@ public final class GameFrame extends JFrame {
     private final IconButton exitButton = new IconButton(IconButton.Kind.EXIT, "메인 화면으로 나가기");
     private final MatchStatusPanel status = new MatchStatusPanel(emoticonButton, chatButton, exitButton);
     private PlaceSender placeSender = (handIndex, row, col) -> false;
+    /** 다시 하기 요청을 서버로 보낸다. 보냈으면 true. */
+    private BooleanSupplier rematchSender = () -> false;
+    /** 게임이 끝난 뒤 띄운 결과 창. 새 게임이 시작되면 닫고 null로 돌린다. */
+    private ResultDialog resultDialog;
     /** START를 받은 뒤부터 GAMEOVER를 받기 전까지 true. */
     private boolean playing;
     /** GAMEOVER를 받은 뒤에는 블록을 놓지 않는다. */
@@ -167,12 +172,20 @@ public final class GameFrame extends JFrame {
         } else {
             opponentColumn.setStatus("접속 종료", Theme.RED);
             status.showNotice(name + "님이 나갔어요");
+            if (resultDialog != null) {
+                resultDialog.showOpponentLeft();
+            }
         }
     }
 
     /** 창의 닫기 버튼을 눌렀을 때 할 일을 연결한다. */
     public void setOnClose(Runnable action) {
         onClose = action;
+    }
+
+    /** 결과 창의 다시 게임하기를 눌렀을 때 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */
+    public void setRematchSender(BooleanSupplier sender) {
+        rematchSender = sender;
     }
 
     /** 블록 배치 요청을 서버로 보내는 동작을 연결한다. */
@@ -191,8 +204,16 @@ public final class GameFrame extends JFrame {
         opponentInfo.setNickname(opponentName, false);
     }
 
-    /** START를 받으면 남은 시간 표시를 시작한다. 다시 들어온 경우에는 남은 시간부터 센다. EDT에서 호출해야 한다. */
+    /**
+     * START를 받으면 남은 시간 표시를 시작한다. 다시 들어온 경우에는 남은 시간부터 센다.
+     * 다시 하기로 새 게임이 시작된 경우에는 결과 창을 닫는다. EDT에서 호출해야 한다.
+     */
     public void startTimer(int seconds) {
+        if (resultDialog != null) {
+            resultDialog.dispose();
+            resultDialog = null;
+            showMessage("새 게임을 시작합니다.");
+        }
         playing = true;
         gameOver = false;
         previousScore = -1;
@@ -215,10 +236,39 @@ public final class GameFrame extends JFrame {
         showMessage(detail);
     }
 
-    /** 결과 창을 띄우고 닫힐 때까지 기다린다. EDT에서 호출해야 한다. */
-    public void showResultDialog(String headline, Boolean win, String body) {
+    /**
+     * 다시 게임하기와 메인으로 돌아가기 버튼이 있는 결과 창을 띄운다. 창은 바로 돌아오고(모달이 아님),
+     * 상대가 이미 나가 있으면 처음부터 다시 하기를 누를 수 없게 한다. EDT에서 호출해야 한다.
+     *
+     * @param opponentPresent 상대가 지금 접속해 있으면 true
+     * @param onMain 메인으로 돌아가기를 누르거나 결과 창을 닫으면 부른다.
+     */
+    public void showResultDialog(String headline, Boolean win, String body, boolean opponentPresent, Runnable onMain) {
         Color color = win == null ? Theme.MUTED : win ? Theme.GREEN : Theme.RED;
-        GameDialog.show(this, "게임 종료 - " + headline, headline, color, body, "확인");
+        if (resultDialog != null) {
+            resultDialog.dispose();
+        }
+        resultDialog = new ResultDialog(this, headline, color, body, rematchSender, onMain);
+        if (!opponentPresent) {
+            resultDialog.showOpponentLeft();
+        }
+        resultDialog.setVisible(true);
+    }
+
+    /**
+     * 서버가 알려 준 다시 하기 요청을 결과 창에 표시한다. 내가 눌렀으면 상대를 기다린다고, 상대가 눌렀으면
+     * 한 판 더 하자는 문구를 보여 준다. EDT에서 호출해야 한다.
+     */
+    public void showRematchRequest(String name) {
+        if (resultDialog == null) {
+            return;
+        }
+        if (name.equals(me.getName())) {
+            resultDialog.showWaiting();
+        } else {
+            resultDialog.showInvite(name);
+            status.showNotice(name + "님: 한판 더해요!");
+        }
     }
 
     /** GameState가 바뀐 뒤 두 플레이어의 점수, 보드, 트레이를 다시 그린다. EDT에서 호출해야 한다. */
