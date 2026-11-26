@@ -2,6 +2,7 @@ package blockmatch.client.ui;
 
 import blockmatch.common.GameRules;
 import blockmatch.common.GameState;
+import blockmatch.common.PlaceResult;
 import blockmatch.common.PlayerState;
 
 import javax.swing.BorderFactory;
@@ -113,6 +114,29 @@ public final class GameFrame extends JFrame {
         chatPanel.setVisible(false);
         pack();
         setMinimumSize(getSize());
+        SoundManager.preload();
+        BoardEffects.warmUp();
+    }
+
+    /**
+     * 블록이 놓였을 때의 효과와 효과음. 줄을 지웠으면 놓은 플레이어의 보드에서 블록이 부서진다.
+     * 게임 상태는 바꾸지 않는다. EDT에서 호출해야 한다.
+     *
+     * @param player 화면 번호. 0은 나, 1은 상대
+     * @param combo  연속으로 줄을 지운 배치 횟수
+     */
+    public void showPlaced(int player, int combo, PlaceResult result) {
+        boolean mine = player == MY_PLAYER;
+        float gain = mine ? 0f : EffectConfig.OPPONENT_SOUND_GAIN;
+        SoundManager.play(SoundManager.Sound.PLACE, gain, 0);
+        if (result.lineCount() == 0) {
+            return;
+        }
+        (mine ? myBoard : opponentBoard).playClear(result, combo);
+        SoundManager.play(SoundManager.Sound.BURST, gain, EffectConfig.FLASH_MILLIS);
+        if (result.lineCount() >= 2) {
+            SoundManager.play(SoundManager.Sound.MULTI, gain, EffectConfig.FLASH_MILLIS + 60);
+        }
     }
 
     /** 서버 접속 상태 같은 안내 문구를 채팅 영역에 남긴다. EDT에서 호출해야 한다. */

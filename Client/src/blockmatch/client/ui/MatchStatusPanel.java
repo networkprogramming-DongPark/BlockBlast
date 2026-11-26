@@ -87,14 +87,17 @@ final class MatchStatusPanel extends JPanel {
         ticker.start();
     }
 
-    /** 방금 얻은 점수와 지운 줄 수를 잠시 보여 준다. */
+    /**
+     * 방금 얻은 점수와 지운 줄 수를 잠시 보여 준다.
+     * 줄을 지운 점수는 보드 위에 떠오르는 글자로 보여 주므로 여기서는 반복하지 않는다.
+     */
     void showGain(int gained, int lines) {
         if (finished) {
             return;
         }
         String title = lines == 0 ? " " : lines == 1 ? "1줄 제거!" : lines + "줄 동시 제거!";
         String cheer = lines == 0 ? " " : lines == 1 ? "좋아요! 계속 이어가요" : "대단해요! 계속 이어가요";
-        showEvent(title, String.format("+%,d점", gained), cheer);
+        showEvent(title, lines == 0 ? String.format("+%,d점", gained) : " ", cheer);
         restartClear(EVENT_MILLIS);
     }
 

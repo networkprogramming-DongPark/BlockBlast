@@ -22,6 +22,13 @@ public final class Protocol {
     /** 서버 → 클라이언트: "STATE|점수0|보드0|블록들0|점수1|보드1|블록들1". 두 플레이어의 상태 전체. */
     public static final String STATE = "STATE";
     /**
+     * 서버 → 클라이언트: "PLACED|번호|획득점수|콤보|가로줄|세로줄|지운칸". 블록이 놓였을 때 STATE보다 먼저 보낸다.
+     * 번호는 놓은 플레이어, 콤보는 연속으로 줄을 지운 배치 횟수(지우지 못했으면 0), 가로줄·세로줄은 지운 줄의 비트 값이다.
+     * 지운칸은 STATE의 보드와 같은 64글자이며 지운 칸만 지우기 전 색상 번호를 갖는다.
+     * 화면 효과에만 쓰고 게임 상태는 STATE로만 바꾼다.
+     */
+    public static final String PLACED = "PLACED";
+    /**
      * 서버 → 클라이언트: "GAMEOVER|승자번호|사유|점수0|점수1". 승자번호는 0 또는 1이고, 무승부면 -1이다.
      * 사유는 END_TIME_UP(제한 시간 종료, 점수로 승패) 또는 END_NO_MOVES(승자의 상대가 놓을 수 있는 블록이 없음)다.
      */
@@ -93,6 +100,37 @@ public final class Protocol {
         return message.toString();
     }
 
+    /** PLACED 메시지의 내용. */
+    public record Placed(int player, int combo, PlaceResult result) {
+    }
+
+    public static String encodePlaced(int player, int combo, PlaceResult result) {
+        return encode(PLACED, player, result.gained(), combo, result.fullRows(), result.fullCols(),
+                encodeBoard(result.cleared()));
+    }
+
+    /**
+     * PLACED 메시지를 "|"로 나눈 것을 읽는다.
+     *
+     * @throws IllegalArgumentException 형식이 틀린 경우
+     */
+    public static Placed readPlaced(String[] parts) {
+        if (parts.length != 7) {
+            throw new IllegalArgumentException("PLACED의 값 개수가 맞지 않음: " + parts.length);
+        }
+        int player = Integer.parseInt(parts[1]);
+        int rows = Integer.parseInt(parts[4]);
+        int cols = Integer.parseInt(parts[5]);
+        int allLines = (1 << GameConfig.BOARD_SIZE) - 1;
+        if (player < 0 || player >= GameConfig.PLAYER_COUNT || (rows & ~allLines) != 0 || (cols & ~allLines) != 0) {
+            throw new IllegalArgumentException("PLACED의 번호나 줄 값이 범위 밖임");
+        }
+        Board cleared = new Board();
+        readBoard(parts[6], cleared);
+        return new Placed(player, Integer.parseInt(parts[3]),
+                new PlaceResult(Integer.parseInt(parts[2]), rows, cols, cleared));
+    }
+
     /**
      * STATE 메시지에서 한 플레이어 몫(점수, 보드, 블록들)을 읽어 target에 덮어쓴다.
      * 값을 모두 확인한 뒤에 바꾸므로, 형식이 틀리면 target은 그대로다.
@@ -101,10 +139,6 @@ public final class Protocol {
      */
     public static void readPlayer(String score, String board, String hand, PlayerState target) {
         int points = Integer.parseInt(score);
-        int size = GameConfig.BOARD_SIZE;
-        if (board.length() != size * size) {
-            throw new IllegalArgumentException("보드 칸 수가 맞지 않음: " + board.length());
-        }
         String[] names = hand.split(HAND_SEPARATOR, -1);
         if (names.length != GameConfig.HAND_SIZE) {
             throw new IllegalArgumentException("블록 수가 맞지 않음: " + hand);
@@ -113,17 +147,31 @@ public final class Protocol {
         for (int i = 0; i < names.length; i++) {
             shapes[i] = names[i].equals(EMPTY_SLOT) ? null : BlockShape.valueOf(names[i]);
         }
-        for (int i = 0; i < board.length(); i++) {
-            if (!Character.isDigit(board.charAt(i))) {
-                throw new IllegalArgumentException("보드에 숫자가 아닌 값: " + board.charAt(i));
-            }
-        }
+        Board decoded = new Board();
+        readBoard(board, decoded);
 
         target.setScore(points);
-        for (int i = 0; i < board.length(); i++) {
-            target.getBoard().set(i / size, i % size, board.charAt(i) - '0');
+        for (int row = 0; row < GameConfig.BOARD_SIZE; row++) {
+            for (int col = 0; col < GameConfig.BOARD_SIZE; col++) {
+                target.getBoard().set(row, col, decoded.get(row, col));
+            }
         }
         System.arraycopy(shapes, 0, target.getHand(), 0, shapes.length);
+    }
+
+    /** encodeBoard로 만든 64글자를 target에 읽어 넣는다. */
+    private static void readBoard(String text, Board target) {
+        int size = GameConfig.BOARD_SIZE;
+        if (text.length() != size * size) {
+            throw new IllegalArgumentException("보드 칸 수가 맞지 않음: " + text.length());
+        }
+        for (int i = 0; i < text.length(); i++) {
+            char value = text.charAt(i);
+            if (value < '0' || value > '0' + BlockShape.MAX_COLOR_ID) {
+                throw new IllegalArgumentException("보드에 색상 번호가 아닌 값: " + value);
+            }
+            target.set(i / size, i % size, value - '0');
+        }
     }
 
     private static String encodeBoard(Board board) {

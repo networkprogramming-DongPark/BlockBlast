@@ -43,13 +43,13 @@ public final class GameRules {
      * 손에 든 블록을 보드에 놓고, 가득 찬 줄을 지운 뒤 점수를 더한다.
      * 손의 블록을 모두 쓰면 새 블록 3개를 채운다.
      *
-     * @return 놓았으면 true, 그 자리에 놓을 수 없거나 빈 칸이면 false
+     * @return 놓았으면 얻은 점수와 지운 칸을 담은 결과, 그 자리에 놓을 수 없거나 빈 칸이면 null
      */
-    public boolean place(PlayerState player, int handIndex, int row, int col) {
+    public PlaceResult place(PlayerState player, int handIndex, int row, int col) {
         BlockShape shape = player.getHand()[handIndex];
         Board board = player.getBoard();
         if (shape == null || !canPlace(board, shape, row, col)) {
-            return false;
+            return null;
         }
 
         int placedCells = 0;
@@ -62,12 +62,13 @@ public final class GameRules {
             }
         }
 
-        int clearedLines = clearFullLines(board);
-        player.setScore(player.getScore() + score(placedCells, clearedLines));
+        FullLines full = clearFullLines(board);
+        int gained = score(placedCells, full.count());
+        player.setScore(player.getScore() + gained);
 
         player.getHand()[handIndex] = null;
         refillHandIfEmpty(player);
-        return true;
+        return new PlaceResult(gained, full.rows(), full.cols(), full.cleared());
     }
 
     /**
@@ -136,13 +137,14 @@ public final class GameRules {
      * 가득 찬 가로줄과 세로줄을 모두 찾은 뒤 한꺼번에 지운다.
      * 하나씩 지우면 가로와 세로가 동시에 찬 경우 한쪽을 놓치기 때문이다.
      *
-     * @return 지운 줄 수 (가로와 세로를 각각 센다)
+     * @return 지운 줄과, 지우기 직전의 칸 색
      */
-    private static int clearFullLines(Board board) {
+    private static FullLines clearFullLines(Board board) {
         int size = GameConfig.BOARD_SIZE;
         boolean[] fullRows = new boolean[size];
         boolean[] fullCols = new boolean[size];
-        int lines = 0;
+        int rowMask = 0;
+        int colMask = 0;
 
         for (int i = 0; i < size; i++) {
             fullRows[i] = true;
@@ -155,17 +157,26 @@ public final class GameRules {
                     fullCols[i] = false;
                 }
             }
-            lines += (fullRows[i] ? 1 : 0) + (fullCols[i] ? 1 : 0);
+            rowMask |= fullRows[i] ? 1 << i : 0;
+            colMask |= fullCols[i] ? 1 << i : 0;
         }
 
+        Board cleared = new Board();
         for (int row = 0; row < size; row++) {
             for (int col = 0; col < size; col++) {
                 if (fullRows[row] || fullCols[col]) {
+                    cleared.set(row, col, board.get(row, col));
                     board.set(row, col, Board.EMPTY);
                 }
             }
         }
-        return lines;
+        return new FullLines(rowMask, colMask, cleared);
+    }
+
+    private record FullLines(int rows, int cols, Board cleared) {
+        int count() {
+            return Integer.bitCount(rows) + Integer.bitCount(cols);
+        }
     }
 
     private static boolean isInside(int row, int col) {

@@ -3,6 +3,7 @@ package blockmatch.server;
 import blockmatch.common.GameConfig;
 import blockmatch.common.GameRules;
 import blockmatch.common.GameState;
+import blockmatch.common.PlaceResult;
 import blockmatch.common.Protocol;
 
 import java.util.Random;
@@ -20,6 +21,8 @@ import java.util.Random;
 final class GameRoom {
     private final GameState state;
     private final GameRules rules = new GameRules(new Random());
+    /** 플레이어별로 연속해서 줄을 지운 배치 횟수. 화면 표시용이며 점수에는 영향이 없다. */
+    private final int[] combos = new int[GameConfig.PLAYER_COUNT];
     /** 제한 시간이 끝나는 시각(System.currentTimeMillis 기준). */
     private final long endMillis;
     private boolean over;
@@ -37,17 +40,22 @@ final class GameRoom {
      * slot번 플레이어의 블록을 그 플레이어의 보드에 놓는다.
      * 놓은 뒤 그 플레이어가 남은 블록을 하나도 놓을 수 없으면 게임을 끝내고 상대를 승자로 한다.
      *
-     * @return 놓았으면 true, 게임이 끝났거나 규칙상 놓을 수 없으면 false (상태는 바뀌지 않음)
+     * @return 놓았으면 화면 효과에 쓸 PLACED 메시지, 게임이 끝났거나 규칙상 놓을 수 없으면 null (상태는 바뀌지 않음)
      */
-    boolean place(int slot, int handIndex, int row, int col) {
-        if (over || !rules.place(state.getPlayer(slot), handIndex, row, col)) {
-            return false;
+    String place(int slot, int handIndex, int row, int col) {
+        if (over) {
+            return null;
         }
+        PlaceResult result = rules.place(state.getPlayer(slot), handIndex, row, col);
+        if (result == null) {
+            return null;
+        }
+        combos[slot] = result.lineCount() > 0 ? combos[slot] + 1 : 0;
         // 블록 3개를 다 쓰면 놓을 수 있는 블록으로 다시 채워지므로, 여기서 막히는 경우는 블록이 남아 있을 때뿐이다.
         if (!GameRules.hasAnyMove(state.getPlayer(slot))) {
             finish(otherSlot(slot), Protocol.END_NO_MOVES);
         }
-        return true;
+        return Protocol.encodePlaced(slot, combos[slot], result);
     }
 
     /**
