@@ -20,6 +20,9 @@ public enum BlockShape {
     T(3, "###", ".#."),
     S(3, ".##", "##.");
 
+    /** 가장 큰 색상 번호. */
+    public static final int MAX_COLOR_ID = 6;
+
     private final int colorId;
     private final String[] rows;
 

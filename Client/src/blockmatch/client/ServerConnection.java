@@ -27,6 +27,9 @@ final class ServerConnection {
         /** parts는 STATE 메시지를 "|"로 나눈 것이다. */
         void onState(String[] parts);
 
+        /** 블록이 놓였다. parts는 PLACED 메시지를 "|"로 나눈 것이다. */
+        void onPlaced(String[] parts);
+
         /** parts는 GAMEOVER 메시지를 "|"로 나눈 것이다. */
         void onGameOver(String[] parts);
 
@@ -154,6 +157,7 @@ final class ServerConnection {
                 listener.accept("게임 시작: " + parts[1] + " vs " + parts[2] + " (남은 시간 " + parts[3] + "초)");
             }
             case Protocol.STATE -> game.onState(parts);
+            case Protocol.PLACED -> game.onPlaced(parts);
             case Protocol.GAMEOVER -> game.onGameOver(parts);
             case Protocol.LEAVE -> {
                 game.onOpponentPresence(parts[1], false);

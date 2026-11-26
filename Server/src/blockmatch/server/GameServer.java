@@ -153,7 +153,7 @@ final class GameServer {
 
     /**
      * 블록 배치 요청을 판정한다. values는 "블록칸|행|열"이다.
-     * 놓았으면 바뀐 상태를 자리에 있는 모두에게 보내고, 아니면 요청한 플레이어에게만 거부 사유를 보낸다.
+     * 놓았으면 PLACED와 바뀐 상태를 자리에 있는 모두에게 보내고, 아니면 요청한 플레이어에게만 거부 사유를 보낸다.
      */
     synchronized void place(ClientHandler sender, String values) throws IOException {
         int slot = indexOf(sender);
@@ -166,12 +166,15 @@ final class GameServer {
             sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_BAD_REQUEST));
             return;
         }
-        if (!room.place(slot, request[0], request[1], request[2])) {
+        String placed = room.place(slot, request[0], request[1], request[2]);
+        if (placed == null) {
             sender.send(Protocol.encode(Protocol.REJECT, Protocol.REASON_CANNOT_PLACE));
             return;
         }
         String state = room.stateMessage();
         for (ClientHandler each : players) {
+            // PLACED를 먼저 보내야 클라이언트가 지워진 칸을 빈칸으로 그리기 전에 효과를 시작한다.
+            sendQuietly(each, placed);
             sendQuietly(each, state);
         }
         // 놓은 뒤 남은 블록을 하나도 놓을 수 없으면 GameRoom이 게임을 끝낸다.
