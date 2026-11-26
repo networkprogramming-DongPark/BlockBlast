@@ -50,6 +50,11 @@ final class ClientHandler implements Runnable {
     private void handle(String line) throws IOException {
         // 값이 하나뿐인 메시지의 값에는 "|"가 들어갈 수 있으므로 종류와 값 두 덩어리로만 나눈다.
         String[] parts = Protocol.decode(line, 2);
+        // REMATCH는 값이 없는 메시지다.
+        if (parts[0].equals(Protocol.REMATCH)) {
+            server.rematch(this);
+            return;
+        }
         if (parts.length < 2) {
             return;
         }

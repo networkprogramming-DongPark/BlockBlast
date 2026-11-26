@@ -6,6 +6,7 @@ import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.geom.RoundRectangle2D;
@@ -35,7 +36,7 @@ final class RoundButton extends JButton {
     @Override
     protected void paintComponent(Graphics graphics) {
         Color base = primary ? Theme.BOARD : Theme.CARD;
-        Color fill = getModel().isPressed() ? Theme.mix(base, Color.BLACK, 0.12)
+        Color fill = !isEnabled() ? Theme.CARD_BORDER : getModel().isPressed() ? Theme.mix(base, Color.BLACK, 0.12)
                 : getModel().isRollover() ? (primary ? Theme.mix(base, Color.WHITE, 0.14) : Theme.ACCENT_SOFT) : base;
         Graphics2D g = Theme.smooth(graphics);
         int arc = Math.min(18, getHeight());
@@ -44,6 +45,16 @@ final class RoundButton extends JButton {
         if (!primary || isFocusOwner()) {
             g.setColor(isFocusOwner() ? Theme.ACCENT : Theme.CARD_BORDER);
             g.draw(new RoundRectangle2D.Double(0.5, 0.5, getWidth() - 1, getHeight() - 1, arc, arc));
+        }
+        if (!isEnabled()) {
+            // 누를 수 없는 버튼은 회색 바탕에 흐린 글자로 직접 그린다. (기본 모양은 글자에 그림자가 생긴다)
+            g.setFont(getFont());
+            g.setColor(Theme.MUTED);
+            FontMetrics metrics = g.getFontMetrics();
+            g.drawString(getText(), (getWidth() - metrics.stringWidth(getText())) / 2,
+                    (getHeight() - metrics.getHeight()) / 2 + metrics.getAscent());
+            g.dispose();
+            return;
         }
         g.dispose();
         super.paintComponent(graphics);

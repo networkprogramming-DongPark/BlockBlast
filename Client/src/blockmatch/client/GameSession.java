@@ -15,8 +15,9 @@ import java.util.function.Consumer;
  * STATE를 받으면 서버 번호를 화면 번호로 바꿔서 넣는다.
  * 수신 스레드에서 호출되므로, 상태 변경과 화면 갱신은 모두 invokeLater로 EDT에 넘긴다.
  *
- * 게임이 끝나면 결과 창을 띄우고, 확인을 누르면 메인 화면으로 돌아간다. 입장이 거부되거나 연결이 끊겨도
- * 메인 화면으로 돌아가 그 이유를 보여 준다.
+ * 게임이 끝나면 다시 게임하기와 메인으로 돌아가기 버튼이 있는 결과 창을 띄운다. 두 플레이어가 모두 다시 하기를
+ * 누르면 서버가 START를 다시 보내 같은 창에서 새 게임이 이어진다. 메인으로 돌아가기를 누르거나, 입장이 거부되거나,
+ * 연결이 끊기면 메인 화면으로 돌아가 그 이유를 보여 준다.
  */
 final class GameSession implements ServerConnection.GameListener {
     private static final int ME = 0;
@@ -28,6 +29,8 @@ final class GameSession implements ServerConnection.GameListener {
     private final Consumer<String> backToMain;
     /** 서버가 정한 내 플레이어 번호. WELCOME을 받기 전에는 -1. EDT에서만 읽고 쓴다. */
     private int myNumber = -1;
+    /** 상대가 지금 접속해 있는지. 게임 중에 상대가 나간 채 끝나면 처음부터 다시 하기를 막는 데 쓴다. EDT에서만 읽고 쓴다. */
+    private boolean opponentPresent = true;
 
     GameSession(GameState view, GameFrame frame, Consumer<String> backToMain) {
         this.view = view;
@@ -43,6 +46,7 @@ final class GameSession implements ServerConnection.GameListener {
     @Override
     public void onStart(String firstPlayer, String secondPlayer, int seconds) {
         SwingUtilities.invokeLater(() -> {
+            opponentPresent = true;
             frame.setPlayerNames(myNumber == 0 ? firstPlayer : secondPlayer, myNumber == 0 ? secondPlayer : firstPlayer);
             frame.startTimer(seconds);
         });
@@ -65,7 +69,15 @@ final class GameSession implements ServerConnection.GameListener {
 
     @Override
     public void onOpponentPresence(String name, boolean present) {
-        SwingUtilities.invokeLater(() -> frame.showOpponentPresence(name, present));
+        SwingUtilities.invokeLater(() -> {
+            opponentPresent = present;
+            frame.showOpponentPresence(name, present);
+        });
+    }
+
+    @Override
+    public void onRematchRequest(String name) {
+        SwingUtilities.invokeLater(() -> frame.showRematchRequest(name));
     }
 
     @Override
@@ -108,13 +120,14 @@ final class GameSession implements ServerConnection.GameListener {
     }
 
     /**
-     * 게임 화면에 결과를 표시하고 결과 창을 띄운다. 확인을 누르면 메인 화면으로 돌아가고,
-     * 메인 화면에도 지난 게임 결과를 한 줄로 남긴다.
+     * 게임 화면에 결과를 표시하고 결과 창을 띄운다. 메인으로 돌아가기를 누르면 메인 화면에도 지난 게임 결과를
+     * 한 줄로 남긴다.
      */
     private void finish(String headline, Boolean win, String detail, String scores, boolean timeUp) {
         frame.showGameOver(headline, win, detail + scores, timeUp);
-        frame.showResultDialog(headline, win, detail + "\n" + scores.trim() + "\n확인을 누르면 메인 화면으로 돌아갑니다.");
-        backToMain.accept("지난 게임: " + headline + scores);
+        String result = "지난 게임: " + headline + scores;
+        frame.showResultDialog(headline, win, detail + "\n" + scores.trim(), opponentPresent,
+                () -> backToMain.accept(result));
     }
 
     /** parts는 STATE 메시지를 나눈 것이다: [STATE, 점수0, 보드0, 블록들0, 점수1, 보드1, 블록들1] */

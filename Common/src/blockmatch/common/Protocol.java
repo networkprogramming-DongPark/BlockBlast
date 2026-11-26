@@ -26,6 +26,12 @@ public final class Protocol {
      * 사유는 END_TIME_UP(제한 시간 종료, 점수로 승패) 또는 END_NO_MOVES(승자의 상대가 놓을 수 있는 블록이 없음)다.
      */
     public static final String GAMEOVER = "GAMEOVER";
+    /**
+     * 게임이 끝난 뒤 같은 상대와 한 판 더 하자는 요청. 클라이언트 → 서버는 값 없이 "REMATCH",
+     * 서버 → 두 클라이언트는 "REMATCH|이름"(그 이름의 플레이어가 다시 하기를 눌렀다)이다.
+     * 두 플레이어가 모두 누르면 서버는 REMATCH 대신 START와 STATE를 보내 새 게임을 시작한다.
+     */
+    public static final String REMATCH = "REMATCH";
 
     /** REJECT의 사유 코드. */
     public static final String REASON_BAD_NAME = "BAD_NAME";
