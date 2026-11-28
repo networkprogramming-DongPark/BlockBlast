@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
  * 소리 장치가 없거나 열 수 없으면 소리만 내지 않는다.
  */
 final class SoundManager {
-    enum Sound { PLACE, BURST, MULTI }
+    enum Sound { PLACE, BURST, MULTI, VICTORY, DEFEAT }
 
     private static final float SAMPLE_RATE = 44_100f;
     /** 같은 소리를 겹쳐 낼 수 있는 수. */
@@ -126,6 +126,35 @@ final class SoundManager {
                 for (int i = 0; i < notes.length; i++) {
                     addSweep(wave, i * 0.065, notes[i], notes[i], 0.22, 0.09);
                 }
+                yield wave;
+            }
+            // 이겼을 때: 빠르게 올라가는 네 음 뒤에 밝은 화음이 길게 울리고, 높은 반짝임이 흩어진다.
+            case VICTORY -> {
+                double[] wave = silence(1.6);
+                double[] run = {523.3, 659.3, 784.0, 1046.5};
+                for (int i = 0; i < run.length; i++) {
+                    addSweep(wave, i * 0.09, run[i], run[i], 0.20, 0.12);
+                }
+                for (double note : run) {
+                    addSweep(wave, 0.40, note, note, 0.11, 0.55);
+                    addSweep(wave, 0.40, note * 2, note * 2, 0.03, 0.30);
+                }
+                for (int i = 0; i < 6; i++) {
+                    double pitch = 2600 + random.nextDouble() * 1800;
+                    addSweep(wave, 0.45 + i * 0.11, pitch, pitch, 0.05, 0.05);
+                }
+                yield wave;
+            }
+            // 졌을 때: 낮게 반음씩 내려가는 세 음과 마지막에 길게 늘어지며 처지는 음.
+            case DEFEAT -> {
+                double[] wave = silence(1.9);
+                double[] notes = {392.0, 370.0, 349.2};
+                for (int i = 0; i < notes.length; i++) {
+                    addSweep(wave, i * 0.32, notes[i], notes[i], 0.20, 0.22);
+                    addSweep(wave, i * 0.32, notes[i] / 2, notes[i] / 2, 0.10, 0.22);
+                }
+                addSweep(wave, 0.96, 330.0, 247.0, 0.22, 0.60);
+                addSweep(wave, 0.96, 165.0, 123.5, 0.12, 0.60);
                 yield wave;
             }
         };

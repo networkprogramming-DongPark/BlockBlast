@@ -8,10 +8,12 @@ import blockmatch.common.PlayerState;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.event.WindowAdapter;
@@ -59,8 +61,8 @@ public final class GameFrame extends JFrame {
     private PlaceSender placeSender = (handIndex, row, col) -> false;
     /** 다시 하기 요청을 서버로 보낸다. 보냈으면 true. */
     private BooleanSupplier rematchSender = () -> false;
-    /** 게임이 끝난 뒤 띄운 결과 창. 새 게임이 시작되면 닫고 null로 돌린다. */
-    private ResultDialog resultDialog;
+    /** 게임이 끝나면 게임 화면 위에 덮어 그리는 WIN/LOSE 화면. 새 게임이 시작되면 닫는다. */
+    private final ResultOverlay resultOverlay = new ResultOverlay();
     /** START를 받은 뒤부터 GAMEOVER를 받기 전까지 true. */
     private boolean playing;
     /** GAMEOVER를 받은 뒤에는 블록을 놓지 않는다. */
@@ -110,7 +112,7 @@ public final class GameFrame extends JFrame {
         JPanel root = new JPanel(new BorderLayout(MARGIN, 0));
         root.setBackground(Theme.BACKGROUND);
         root.setBorder(BorderFactory.createEmptyBorder(MARGIN, MARGIN, MARGIN, MARGIN));
-        root.add(new PlayArea(myColumn, status, opponentColumn), BorderLayout.CENTER);
+        root.add(stack(new PlayArea(myColumn, status, opponentColumn), resultOverlay), BorderLayout.CENTER);
         root.add(chatPanel, BorderLayout.EAST);
         setContentPane(root);
         new BlockDragHandler(this, me, myTray, myBoard, this::requestPlace);
@@ -172,8 +174,8 @@ public final class GameFrame extends JFrame {
         } else {
             opponentColumn.setStatus("접속 종료", Theme.RED);
             status.showNotice(name + "님이 나갔어요");
-            if (resultDialog != null) {
-                resultDialog.showOpponentLeft();
+            if (resultOverlay.isVisible()) {
+                resultOverlay.showOpponentLeft();
             }
         }
     }
@@ -183,7 +185,7 @@ public final class GameFrame extends JFrame {
         onClose = action;
     }
 
-    /** 결과 창의 다시 게임하기를 눌렀을 때 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */
+    /** 결과 화면의 다시 게임하기를 눌렀을 때 서버로 보내는 동작을 연결한다. 보냈으면 true를 돌려줘야 한다. */
     public void setRematchSender(BooleanSupplier sender) {
         rematchSender = sender;
     }
@@ -206,12 +208,11 @@ public final class GameFrame extends JFrame {
 
     /**
      * START를 받으면 남은 시간 표시를 시작한다. 다시 들어온 경우에는 남은 시간부터 센다.
-     * 다시 하기로 새 게임이 시작된 경우에는 결과 창을 닫는다. EDT에서 호출해야 한다.
+     * 다시 하기로 새 게임이 시작된 경우에는 결과 화면을 닫는다. EDT에서 호출해야 한다.
      */
     public void startTimer(int seconds) {
-        if (resultDialog != null) {
-            resultDialog.dispose();
-            resultDialog = null;
+        if (resultOverlay.isVisible()) {
+            resultOverlay.close();
             showMessage("새 게임을 시작합니다.");
         }
         playing = true;
@@ -222,51 +223,57 @@ public final class GameFrame extends JFrame {
     }
 
     /**
-     * 게임 결과를 가운데에 크게 표시하고, 자세한 내용은 채팅 영역에 남긴다. 이후에는 블록을 놓을 수 없다.
+     * 게임이 끝났음을 표시한다. 시계를 멈추고 자세한 내용은 채팅 영역에 남기며, 이후에는 블록을 놓을 수 없다.
+     * 큰 결과 글자와 버튼은 showResult가 게임 화면 위에 띄운다.
      * EDT에서 호출해야 한다.
      *
      * @param win 이겼으면 true, 졌으면 false, 무승부면 null
      * @param timeUp 제한 시간이 끝나서 끝났으면 true
      */
-    public void showGameOver(String headline, Boolean win, String detail, boolean timeUp) {
+    public void showGameOver(Boolean win, String detail, boolean timeUp) {
         playing = false;
         gameOver = true;
         opponentColumn.setStatus("게임 종료", Theme.MUTED);
-        status.showResult(headline, win, timeUp);
+        // 큰 결과 글자는 결과 화면(ResultOverlay)이 보여 주므로, 가운데 영역은 시계만 멈추고 글자는 비워 둔다.
+        status.showResult(" ", win, timeUp);
         showMessage(detail);
     }
 
     /**
-     * 다시 게임하기와 메인으로 돌아가기 버튼이 있는 결과 창을 띄운다. 창은 바로 돌아오고(모달이 아님),
-     * 상대가 이미 나가 있으면 처음부터 다시 하기를 누를 수 없게 한다. EDT에서 호출해야 한다.
+     * 새 창을 띄우지 않고 게임 화면 위에 WIN, LOSE, DRAW와 효과를 덮어 그린다. 아래에는 결과 설명과
+     * 다시 게임하기, 메인으로 돌아가기 버튼이 있다. 상대가 이미 나가 있으면 처음부터 다시 하기를 누를 수 없다.
+     * 채팅창은 가리지 않으므로 결과를 보면서 채팅할 수 있다. EDT에서 호출해야 한다.
      *
+     * @param win 이겼으면 true, 졌으면 false, 무승부면 null
      * @param opponentPresent 상대가 지금 접속해 있으면 true
-     * @param onMain 메인으로 돌아가기를 누르거나 결과 창을 닫으면 부른다.
+     * @param onMain 메인으로 돌아가기를 누르면 부른다.
      */
-    public void showResultDialog(String headline, Boolean win, String body, boolean opponentPresent, Runnable onMain) {
-        Color color = win == null ? Theme.MUTED : win ? Theme.GREEN : Theme.RED;
-        if (resultDialog != null) {
-            resultDialog.dispose();
-        }
-        resultDialog = new ResultDialog(this, headline, color, body, rematchSender, onMain);
+    public void showResult(Boolean win, String detail, String scores, boolean opponentPresent, Runnable onMain) {
+        ResultOverlay.Mood mood = win == null ? ResultOverlay.Mood.DRAW
+                : win ? ResultOverlay.Mood.WIN : ResultOverlay.Mood.LOSE;
+        resultOverlay.open(mood, detail, scores, rematchSender, onMain);
         if (!opponentPresent) {
-            resultDialog.showOpponentLeft();
+            resultOverlay.showOpponentLeft();
         }
-        resultDialog.setVisible(true);
+        if (mood == ResultOverlay.Mood.WIN) {
+            SoundManager.play(SoundManager.Sound.VICTORY, 0f, 120);
+        } else if (mood == ResultOverlay.Mood.LOSE) {
+            SoundManager.play(SoundManager.Sound.DEFEAT, 0f, 200);
+        }
     }
 
     /**
-     * 서버가 알려 준 다시 하기 요청을 결과 창에 표시한다. 내가 눌렀으면 상대를 기다린다고, 상대가 눌렀으면
+     * 서버가 알려 준 다시 하기 요청을 결과 화면에 표시한다. 내가 눌렀으면 상대를 기다린다고, 상대가 눌렀으면
      * 한 판 더 하자는 문구를 보여 준다. EDT에서 호출해야 한다.
      */
     public void showRematchRequest(String name) {
-        if (resultDialog == null) {
+        if (!resultOverlay.isVisible()) {
             return;
         }
         if (name.equals(me.getName())) {
-            resultDialog.showWaiting();
+            resultOverlay.showWaiting();
         } else {
-            resultDialog.showInvite(name);
+            resultOverlay.showInvite(name);
             status.showNotice(name + "님: 한판 더해요!");
         }
     }
@@ -285,6 +292,26 @@ public final class GameFrame extends JFrame {
         opponentBoard.repaint();
         myTray.repaint();
         opponentTray.repaint();
+    }
+
+    /** 게임 화면과 결과 화면을 같은 자리에 겹쳐 둔다. 결과 화면이 위에 온다. */
+    private static JLayeredPane stack(Component game, Component overlay) {
+        JLayeredPane layers = new JLayeredPane() {
+            @Override
+            public void doLayout() {
+                for (Component child : getComponents()) {
+                    child.setBounds(0, 0, getWidth(), getHeight());
+                }
+            }
+
+            @Override
+            public Dimension getPreferredSize() {
+                return game.getPreferredSize();
+            }
+        };
+        layers.add(game, JLayeredPane.DEFAULT_LAYER);
+        layers.add(overlay, JLayeredPane.PALETTE_LAYER);
+        return layers;
     }
 
     private boolean requestPlace(int handIndex, int row, int col) {
