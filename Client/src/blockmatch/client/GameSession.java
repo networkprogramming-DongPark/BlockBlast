@@ -125,14 +125,13 @@ final class GameSession implements ServerConnection.GameListener {
     }
 
     /**
-     * 게임 화면에 결과를 표시하고 결과 창을 띄운다. 메인으로 돌아가기를 누르면 메인 화면에도 지난 게임 결과를
+     * 게임 화면 위에 결과(WIN/LOSE/DRAW)를 띄운다. 메인으로 돌아가기를 누르면 메인 화면에도 지난 게임 결과를
      * 한 줄로 남긴다.
      */
     private void finish(String headline, Boolean win, String detail, String scores, boolean timeUp) {
-        frame.showGameOver(headline, win, detail + scores, timeUp);
+        frame.showGameOver(win, detail + scores, timeUp);
         String result = "지난 게임: " + headline + scores;
-        frame.showResultDialog(headline, win, detail + "\n" + scores.trim(), opponentPresent,
-                () -> backToMain.accept(result));
+        frame.showResult(win, detail, scores.trim(), opponentPresent, () -> backToMain.accept(result));
     }
 
     /** 놓은 플레이어의 보드에 효과를 보여 준다. 게임 상태는 뒤이어 오는 STATE가 바꾼다. */

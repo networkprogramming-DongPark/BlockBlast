@@ -13,7 +13,7 @@ import java.awt.Color;
 import java.awt.FlowLayout;
 import java.awt.Font;
 
-/** 게임 화면과 같은 모양의 확인 창. 닫을 때까지 게임 창을 조작할 수 없다. 게임 결과 창은 ResultDialog다. */
+/** 게임 화면과 같은 모양의 확인 창. 닫을 때까지 게임 창을 조작할 수 없다. 게임 결과는 창이 아니라 게임 화면 위의 ResultOverlay로 보여 준다. */
 final class GameDialog extends JDialog {
     private boolean confirmed;
 
